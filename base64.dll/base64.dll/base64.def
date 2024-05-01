@@ -1,0 +1,5 @@
+LIBRARY	BASE64
+EXPORTS
+	base64Init @1
+	base64Decode @2
+	base64Encode @3
