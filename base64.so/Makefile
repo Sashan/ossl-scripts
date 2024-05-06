@@ -7,14 +7,23 @@
 # https://www.openssl.org/source/license.html
 #
 
+#
+# Just in case you want to byild with RPATH option:
+#-Wl,-rpath,$(TARGET_OSSL_LIBRARY_PATH)
+#
+
 all: test.implicit test.explicit base64.so base64-static.so
 
 LDFLAGS=-L $(TARGET_OSSL_LIBRARY_PATH)
 CPPFLAGS=-I$(TARGET_OSSL_INCLUDE_PATH)
-CFLAGS=-g -O0
+#
+# _GNI_SOURCE guard is needed to include strcasecmp()
+# on linuc/glibc
+#
+CFLAGS=-g -O0 -D_GNU_SOURCE
 
 test.implicit: implicit.o base64.o
-	$(CC) $(LDFLAGS) -lcrypto -o test.implicit implicit.o base64.o 
+	$(CC) -o test.implicit implicit.o base64.o $(LDFLAGS) -lcrypto
 
 implicit.o: implicit.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
@@ -26,13 +35,13 @@ test.explicit: explicit.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o test.explicit explicit.c
 
 base64.so: base64.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -fPIC $(LDFLAGS) -lcrypto \
-	    -o base64.so base64.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -fPIC -o base64.so base64.c \
+	    $(LDFLAGS) -lcrypto
 
 base64-static.so: base64.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -FPIC \
-	    $(TARGET_OSSL_LIBRARY_PATH)/libcrypto.a -lpthread \
-	    -o base64-static.so base64.c
+	$(CC) $(CPPFLAGS) $(CFLAGS) -shared -fPIC \
+	    -o base64-static.so base64.c \
+	    $(TARGET_OSSL_LIBRARY_PATH)/libcrypto.a -lpthread
 
 test: test-implicit test-explicit test-explicit-static
 

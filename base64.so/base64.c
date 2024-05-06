@@ -76,5 +76,6 @@ fakeCleanup(void)
 void
 base64Init(void)
 {
+	OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL);
 	(void)OPENSSL_atexit(fakeCleanup);
 }
