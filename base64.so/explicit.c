@@ -23,6 +23,8 @@ static Base64Init base64Init;
 
 static const char *progName = "???";
 
+#define	BUFSZ	1024
+
 static void
 usage(void)
 {
@@ -36,7 +38,7 @@ usage(void)
 static void
 runTest(void)
 {
-	char	buf1[1024], buf2[1024];
+	char	buf1[BUFSZ], buf2[BUFSZ];
 	char	*msg = "Hello World, base64 is linked implicitly\n";
 	int	len;
 
@@ -45,6 +47,9 @@ runTest(void)
 	 * I things go as expected 'fakeCleanup done' appears on stdout.
 	 */
 	base64Init();
+
+	memset(buf1, 0, BUFSZ);
+	memset(buf2, 0, BUFSZ);
 
 	if ((len = base64Encode(msg, strlen(msg), buf1, sizeof (buf1))) == -1)
 		printf("base64Encode() has failed\n");
