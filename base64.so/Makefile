@@ -23,7 +23,8 @@ CPPFLAGS=-I$(TARGET_OSSL_INCLUDE_PATH)
 CFLAGS=-g -O0 -D_GNU_SOURCE
 
 test.implicit: implicit.o base64.o
-	$(CC) -o test.implicit implicit.o base64.o $(LDFLAGS) -lcrypto
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o test.implicit implicit.o base64.o \
+	    $(LDFLAGS) -lcrypto
 
 implicit.o: implicit.c
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c -o $@ $<
