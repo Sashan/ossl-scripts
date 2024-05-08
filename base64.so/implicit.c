@@ -77,9 +77,10 @@ parseExitHandler(const char *atExit)
 
 	func = nameToExitFunc(atExit);
 	if (func == -1)
-		err(1, "unknown atExit handler func: %s\n", atExitFunc);
+		err(1, "unknown atExit handler func: %s\n", atExit);
 
 	rv |= func;
+	free(a);
 
 	return (rv);
 }
