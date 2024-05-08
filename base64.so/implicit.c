@@ -21,11 +21,7 @@ main(int argc, const char *argv[])
 	char	*msg = "Hello World, base64 is linked implicitly\n";
 	int	len;
 
-	/*
-	 * ask base64 to install exit handler via OPENSSL_atexit();
-	 * I things go as expected 'fakeCleanup done' appears on stdout.
-	 */
-	base64Init();
+	base64ArmAtExit();
 
 	memset(buf1, 0, BUFSZ);
 	memset(buf2, 0, BUFSZ);

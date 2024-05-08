@@ -68,14 +68,14 @@ error:
 }
 
 static void
-fakeCleanup(void)
+base64AtExit(void)
 {
 	printf("%s done\n", __func__);
 }
 
 void
-base64Init(void)
+base64ArmAtExit(void)
 {
 	OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL);
-	(void)OPENSSL_atexit(fakeCleanup);
+	(void)OPENSSL_atexit(base64AtExit);
 }

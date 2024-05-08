@@ -15,11 +15,11 @@
 #include <err.h>
 
 typedef int(*Base64Func)(const char *, size_t, char *, size_t);
-typedef void(*Base64Init)(void);
+typedef void(*Base64ArmAtExitFuc)(void);
 
 static Base64Func base64Decode;
 static Base64Func base64Encode;
-static Base64Init base64Init;
+static Base64ArmAtExitFuc base64ArmAtExit;
 
 static const char *progName = "???";
 
@@ -42,11 +42,7 @@ runTest(void)
 	char	*msg = "Hello World, base64 is linked implicitly\n";
 	int	len;
 
-	/*
-	 * ask base64 to install exit handler via OPENSSL_atexit();
-	 * I things go as expected 'fakeCleanup done' appears on stdout.
-	 */
-	base64Init();
+	base64ArmAtExit();
 
 	memset(buf1, 0, BUFSZ);
 	memset(buf2, 0, BUFSZ);
@@ -149,8 +145,8 @@ main(int argc, char * const *argv)
 	if (dl == NULL)
 		errx(1, "dlopen [%s]", dlerror());
 
-	base64Init = dlsym(dl, "base64Init");
-	if (base64Init == NULL)
+	base64ArmAtExit = dlsym(dl, "base64ArmAtExit");
+	if (base64ArmAtExit == NULL)
 		errx(1, "dlsaym(\"base64Init\") [%s]", dlerror());
 
 	base64Encode = dlsym(dl, "base64Encode");

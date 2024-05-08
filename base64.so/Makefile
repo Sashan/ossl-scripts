@@ -44,22 +44,38 @@ base64-static.so: base64.c
 	    -o base64-static.so base64.c \
 	    $(TARGET_OSSL_LIBRARY_PATH)/libcrypto.a -lpthread
 
-test: test-implicit test-explicit test-explicit-static
+test: test-atexit-implicit test-atexit-explicit test-atexit-explicit-static \
+	test-cleanup-implicit test-cleanup-explicit test-cleanup-explicit-static
 
-test-implicit: test.implicit
-	./test.implicit |grep 'fakeCleanup done'
+test-atexit-implicit: test.implicit
+	./test.implicit |grep 'base64AtExit'
 
-test-explicit: test.explicit base64.so
-	./test.explicit -l `pwd`/base64.so -f 'now|global' | grep 'fakeCleanup done'
-	./test.explicit -l `pwd`/base64.so -f 'now|local' | grep 'fakeCleanup done'
-	./test.explicit -l `pwd`/base64.so -f 'lazy|global' | grep 'fakeCleanup done'
-	./test.explicit -l `pwd`/base64.so -f 'lazy|local' | grep 'fakeCleanup done'
+test-atexit-explicit: test.explicit base64.so
+	./test.explicit -l `pwd`/base64.so -f 'now|global' | grep 'base64AtExit'
+	./test.explicit -l `pwd`/base64.so -f 'now|local' | grep 'base64AtExit'
+	./test.explicit -l `pwd`/base64.so -f 'lazy|global' | grep 'base64AtExit'
+	./test.explicit -l `pwd`/base64.so -f 'lazy|local' | grep 'base64AtExit'
 
-test-explicit-static: test.explicit base64-static.so
-	./test.explicit -l `pwd`/base64-static.so -f 'now|global' | grep 'fakeCleanup done'
-	./test.explicit -l `pwd`/base64-static.so -f 'now|local' | grep 'fakeCleanup done'
-	./test.explicit -l `pwd`/base64-static.so -f 'lazy|global' | grep 'fakeCleanup done'
-	./test.explicit -l `pwd`/base64-static.so -f 'lazy|local' | grep 'fakeCleanup done'
+test-atexit-explicit-static: test.explicit base64-static.so
+	./test.explicit -l `pwd`/base64-static.so -f 'now|global' | grep 'base64AtExit'
+	./test.explicit -l `pwd`/base64-static.so -f 'now|local' | grep 'base64AtExit'
+	./test.explicit -l `pwd`/base64-static.so -f 'lazy|global' | grep 'base64AtExit'
+	./test.explicit -l `pwd`/base64-static.so -f 'lazy|local' | grep 'base64AtExit'
+
+test-cleanup-implicit: test.implicit
+	./test.implicit |grep 'OPENSSL_cleanup'
+
+test-cleanup-explicit: test.explicit base64.so
+	./test.explicit -l `pwd`/base64.so -f 'now|global' |grep 'OPENSSL_cleanup'
+	./test.explicit -l `pwd`/base64.so -f 'now|local' |grep 'OPENSSL_cleanup'
+	./test.explicit -l `pwd`/base64.so -f 'lazy|global' |grep 'OPENSSL_cleanup'
+	./test.explicit -l `pwd`/base64.so -f 'lazy|local' |grep 'OPENSSL_cleanup'
+
+test-cleanup-explicit-static: test.explicit base64.so
+	./test.explicit -l `pwd`/base64-static.so -f 'now|global' |grep 'OPENSSL_cleanup'
+	./test.explicit -l `pwd`/base64-static.so -f 'now|local' |grep 'OPENSSL_cleanup'
+	./test.explicit -l `pwd`/base64-static.so -f 'lazy|global' |grep 'OPENSSL_cleanup'
+	./test.explicit -l `pwd`/base64-static.so -f 'lazy|local' |grep 'OPENSSL_cleanup'
 
 clean:
 	rm -f test.implicit base64.o base64.so base64-static.so test.explicit

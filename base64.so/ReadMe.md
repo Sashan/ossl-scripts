@@ -1,51 +1,45 @@
-This is a test to evaluate impact of [atexit() removal](https://github.com/openssl/openssl/pull/24148) on `OPENSSL_atexit()` function
-(see [OPENSSL\_atexit(3)](https://www.openssl.org/docs/man3.1/man3/OPENSSL_atexit.html).
-Current OpenSSL library (3.3) installs its own atexit(3) handler. The handler
-calls `OPENSSL\_cleanup()` function upon process exit. The OpenSSL library also
-provides function `OPENSSL\_atexit()` which allows application to install its
-own atexit handlers. Handlers installed by `OPENSSL\_atexit()` function are
-invoked by OPENSSL\_cleanup().
-
-The [PR]((https://github.com/openssl/openssl/pull/24148) stops OpenSSL to install its own `atexit` handler
-using libc's `atexit(3)`.  Instead of using `atexit(3)` provided by libc the OpenSSL uses runtime linker.
-Runtime linker allows dynamically linked applications and libraries to provide constructors (legacy _init() function)
- and destructors (_fini()). See article [here](https://www.geeksforgeeks.org/__attribute__constructor-__attribute__destructor-syntaxes-c/) to find
-out how constructors/destructors are handled these days.
-
-Refer to Makefile to see how things are supposed to work. To build all programs
-and libraries run `make all`. Use `TARGET_OSSL_LIBRARY_PATH` and
-`TARGET_OSSL_INCLUDE_PATH` environment variables to point build process to
-desired version of OpenSSL libraries.
-
-To perform testing run `make test` command.
-
-There are two tests programs built by Makefile:
-    - `test.implicit` which relies on runtime linker to load desired
-      OpenSSL library when application is executed
-    - `test.explicit` uses `dlopen()` to load desired test library at
-       runtime.
-
-Both test programs use functionality provided by `base64.c` module. The
-module provides three functions:
-    - `base64Init()`
+This is a test to evaluate changes in [atexit() removal](https://github.com/openssl/openssl/pull/24148) in `OpenSSL` library. The pull request moves call to `OPENSSL_cleanup()` from _atexit_ handler (set via libc `atexit(3)`) to library destructor. The code here helps us to better understand and evaluate impact of the change on dynamically inked applications. In typical scenario runtime linker uses information from`DT_NEEDED` field found in elf header to see which libraries to use to construct the process. Desired libraries are then pulled in from standard locations (such as `/lib` for example). The `DT_NEEDED` field is set at build time. That kind of linking process is referred as [implicit](https://www.equestionanswers.com/dll/what-is-implicit-and-explicit-linking-in-dynamic-loading.php) linking. Another option how dynamic application can pull-in desired shared library is to use `dlopen()`/`LoadLibrary()` functions. The `dlopen()` way is referred as explicit linking. The tests here cover both scenarios. To perform the tests the Makefile builds those objects:
+    - `test.implicit`, the application pulls `libcrypto` in via `DT_NEEDED` (`-lcrypto` in Makefile)
+    - `test.exmplicit`, the application explicitly loads `base64.so`/`base64-static.so` explicitly (using `dlopen()`) the libcrypto then is pulled in as a `base64.so` dependency.
+    - `base64.so` is simple shared library which pulls libcrypto in via `DT_NEEDED`
+    - `base64-static.so` is statically linked with libcrypto 
+To exercise code in `libcrypto` the `base64` module provides function as follows:
     - `base64Encode()`
     - `base64Decode()`
+    - `base64ArmAtExit()`
+The `base64ArmAtExit()` function calls `OPENSSL_atexit()` to set up `base64AtExit()` function as _atexit_ handler.
 
-For test purposes the most important one is `base64Init()` which installs simple
-atexit handler using `OPENSSL_atexit()` The code for exit handler reads as follows:
+Makefile also provides `test` target to run tests. The `test` target depends on inddividual tests:
+    - `test-atexit-implicit`
+    - `test-atexit-explicit`
+    - `test-atexit-explicit-static`
+    - `test-cleanup-implicit`
+    - `test-cleanup-explicit`
+    - `test-cleanup-explicit-static`
+The `test-atexit-*` targets verify the _atexit_ handler fires on test application exit. The `test-clenaup-*` targets verify `OPENSSL_cleanup()` function gets called at application exit. The `test-clenaup` tests require customized build of librcypto library. The patch here must be applied to openssl source code:
 ```
-static void
-fakeCleanup(void)
-{
-	printf("%s done\n", __func__);
-}
-
+--- a/crypto/init.c
++++ b/crypto/init.c
+@@ -34,6 +34,10 @@
+ #include <openssl/trace.h>
+ #include "crypto/ctype.h"
+ 
++#ifdef _TEST_CLEANUP
++#include <stdio.h>
++#endif
++
+ static int stopped = 0;
+ static uint64_t optsdone = 0;
+ 
+@@ -318,6 +322,9 @@ void OPENSSL_cleanup(void)
+ {
+     OPENSSL_INIT_STOP *currhandler, *lasthandler;
+ 
++#ifdef _TEST_CLEANUP
++    printf("%s\n", __func__);
++#endif
+     /*
+      * At some point we should consider looking at this function with a view to
+      * moving most/all of this into onfree handlers in OSSL_LIB_CTX.
 ```
-Both test applications do call `base64Init()` to install exit handler. If things go
-well, then each application must print 'fakeCleanup done' message on standard output.
-
-The Makefile also produces two ``base64` shared libraries:
-    - base64.so is dynamic library linked with dynamic libcrypto.so
-    - base64-static.so is dynamic library linked with static variant of libcrypto
-
-The test verifies if exit handler gets invoked by library destructor.
+Once diff is applied the library must be rebuilt with `-D_TEST_CLEANUP` option (use add `-D_TEST_CLEANUP` option to your `./Configure` command). To run/build test you must point `Makefile` to place where your custom openssl library for testing got installed. Set `TARGET_OSSL_LIBRARY_PATH` and `TARGET_OSSL_INCLUDE_PATH` environement variables accordingly.
