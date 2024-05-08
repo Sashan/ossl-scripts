@@ -74,8 +74,11 @@ base64AtExit(void)
 }
 
 void
-base64ArmAtExit(void)
+base64ArmAtExit(void (*exitHandler)(void))
 {
 	OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL);
-	(void)OPENSSL_atexit(base64AtExit);
+	if (exitHandler == NULL)
+		(void)OPENSSL_atexit(base64AtExit);
+	else
+		(void)OPENSSL_atexit(exitHandler);
 }

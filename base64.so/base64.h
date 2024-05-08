@@ -14,6 +14,6 @@
 
 extern int base64Encode(const char *, size_t, char *, size_t);
 extern int base64Decode(const char *, size_t, char *, size_t);
-extern void base64ArmAtExit(void);
+extern void base64ArmAtExit(void(*)(void));
 
 #endif
