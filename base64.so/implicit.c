@@ -96,7 +96,7 @@ int
 main(int argc, char * const *argv)
 {
 	char	buf1[BUFSZ], buf2[BUFSZ];
-	char	*atExit;
+	char	*atExit = NULL;
 	char	*msg = "Hello World, base64 is linked implicitly\n";
 	int	len, atExitFuncs;
 	int 	c;
