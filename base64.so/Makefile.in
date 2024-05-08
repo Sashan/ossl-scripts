@@ -1,0 +1,246 @@
+test-all: \
+	test-all-static \
+	test-all-implicit \
+	test-all-base64 \
+	test-all-base64-static \
+	test-done
+
+test-all-static: \
+	test-static-mainAtExit \
+	test-static-base64AtExit \
+	test-static-noatexit \
+	test-done
+
+test-all-implicit: \
+	test-implicit-mainAtExit \
+	test-implicit-base64AtExit \
+	test-implicit-noatexit \
+	test-done
+
+test-all-base64: \
+	test-explicit-base64-now-global-noatexit \
+	test-explicit-base64-now-global-mainAtExit \
+	test-explicit-base64-now-global-base64AtExit \
+	test-explicit-base64-now-local-noatexit \
+	test-explicit-base64-now-local-mainAtExit \
+	test-explicit-base64-now-local-base64AtExit \
+	test-explicit-base64-lazy-global-noatexit \
+	test-explicit-base64-lazy-global-mainAtExit \
+	test-explicit-base64-lazy-global-base64AtExit \
+	test-explicit-base64-lazy-local-noatexit \
+	test-explicit-base64-lazy-local-mainAtExit \
+	test-explicit-base64-lazy-local-base64AtExit \
+	test-done
+
+test-all-base64-static: \
+	test-explicit-base64-static-now-global-noatexit \
+	test-explicit-base64-static-now-global-mainAtExit \
+	test-explicit-base64-static-now-global-base64AtExit \
+	test-explicit-base64-static-now-local-noatexit \
+	test-explicit-base64-static-now-local-mainAtExit \
+	test-explicit-base64-static-now-local-base64AtExit \
+	test-explicit-base64-static-lazy-global-noatexit \
+	test-explicit-base64-static-lazy-global-mainAtExit \
+	test-explicit-base64-static-lazy-global-base64AtExit \
+	test-explicit-base64-static-lazy-local-noatexit \
+	test-explicit-base64-static-lazy-local-mainAtExit \
+	test-explicit-base64-static-lazy-local-base64AtExit \
+	test-done
+
+test-all-noatexit: \
+	test-static-atexit \
+	test-implicit-atexit \
+	test-explicit-base64-atexit \
+	test-explicit-base64-static-atexit \
+	test-done
+
+test-all-mainAtExit: \
+	test-static-atexit \
+	test-implicit-atexit \
+	test-explicit-base64-atexit \
+	test-explicit-base64-static-atexit \
+	test-done
+
+test-all-base64AtExit: \
+	test-static-atexit \
+	test-implicit-atexit \
+	test-explicit-base64-atexit \
+	test-explicit-base64-static-atexit \
+	test-done
+
+test-base64-noatexit:	\
+	test-explicit-base64-now-global-noatexit \
+	test-explicit-base64-now-local-noatexit \
+	test-explicit-base64-lazy-global-noatexit \
+	test-explicit-base64-lazy-local-noatexit \
+	test-done
+
+test-base64-base64AtExit:	\
+	test-explicit-base64-now-global-base64AtExit \
+	test-explicit-base64-now-local-base64AtExit \
+	test-explicit-base64-lazy-global-base64AtExit \
+	test-explicit-base64-lazy-local-base64AtExit \
+	test-done
+
+test-base64-mainAtExit:	\
+	test-explicit-base64-now-global-mainAtExit \
+	test-explicit-base64-now-local-mainAtExit \
+	test-explicit-base64-lazy-global-mainAtExit \
+	test-explicit-base64-lazy-local-mainAtExit \
+	test-done
+
+test-base64-static-noatexit:	\
+	test-explicit-base64-static-now-global-noatexit \
+	test-explicit-base64-static-now-local-noatexit \
+	test-explicit-base64-static-lazy-global-noatexit \
+	test-explicit-base64-static-lazy-local-noatexit \
+	test-done
+
+test-base64-static-base64AtExit:	\
+	test-explicit-base64-static-now-global-base64AtExit \
+	test-explicit-base64-static-now-local-base64AtExit \
+	test-explicit-base64-static-lazy-global-base64AtExit \
+	test-explicit-base64-static-lazy-local-base64AtExit \
+	test-done
+
+test-base64-static-mainAtExit:	\
+	test-explicit-base64-static-now-global-mainAtExit \
+	test-explicit-base64-static-now-local-mainAtExit \
+	test-explicit-base64-static-lazy-global-mainAtExit \
+	test-explicit-base64-static-lazy-local-mainAtExit \
+	test-done
+
+#
+# Here we define targets for test which use dlopen() to
+# load base64 library. There are two variants of base64
+# library:
+#    - base64.so which dynamically loads libcypto via DT_NEEDED
+#    - base64-static.so which is statically linked with libcrypto
+# The tests also covers all combinations of dlopen() function:
+#    RTLD_NOW, RTLD_LAZY, RTLD_LOCAL, RTLD_GLOBAL
+# And finally test excercises OPENSSL_atexit(), there are those
+# variants covered in targets below:
+#    - no atexit handler set
+#    - we set base64AtExit() exit handler which defined in base64*.so
+#    - we set mainAtExit() exit handler which is defined along the main()
+#
+test-explicit-base64-now-global-noatexit: test.explicit base64.so
+	./test.explicit -l ./base64.so -f 'now|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-now-global-mainAtExit: test.explicit base64.so
+	./test.explicit -a mainAtExit -l ./base64.so -f 'now|global'|grep mainAtExit
+	./test.explicit -a mainAtExit -l ./base64.so -f 'now|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-now-global-base64AtExit: test.explicit base64.so
+	./test.explicit -a base64AtExit -l ./base64.so -f 'now|global'|grep base64AtExit
+	./test.explicit -a base64AtExit -l ./base64.so -f 'now|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-now-local-noatexit: test.explicit base64.so
+	./test.explicit -l ./base64.so -f 'now|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-now-local-mainAtExit: test.explicit base64.so
+	./test.explicit -a mainAtExit -l ./base64.so -f 'now|local'|grep mainAtExit
+	./test.explicit -a mainAtExit -l ./base64.so -f 'now|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-now-local-base64AtExit: test.explicit base64.so
+	./test.explicit -a base64AtExit -l ./base64.so -f 'now|local'|grep base64AtExit
+	./test.explicit -a base64AtExit -l ./base64.so -f 'now|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-lazy-global-noatexit: test.explicit base64.so
+	./test.explicit -l ./base64.so -f 'lazy|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-lazy-global-mainAtExit: test.explicit base64.so
+	./test.explicit -a mainAtExit -l ./base64.so -f 'lazy|global'|grep mainAtExit
+	./test.explicit -a mainAtExit -l ./base64.so -f 'lazy|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-lazy-global-base64AtExit: test.explicit base64.so
+	./test.explicit -a base64AtExit -l ./base64.so -f 'lazy|global'|grep base64AtExit
+	./test.explicit -a base64AtExit -l ./base64.so -f 'lazy|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-lazy-local-noatexit: test.explicit base64.so
+	./test.explicit -l ./base64.so -f 'lazy|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-lazy-local-mainAtExit: test.explicit base64.so
+	./test.explicit -a mainAtExit -l ./base64.so -f 'lazy|local'|grep mainAtExit
+	./test.explicit -a mainAtExit -l ./base64.so -f 'lazy|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-lazy-local-base64AtExit: test.explicit base64.so
+	./test.explicit -a base64AtExit -l ./base64.so -f 'lazy|local'|grep base64AtExit
+	./test.explicit -a base64AtExit -l ./base64.so -f 'lazy|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-now-global-noatexit: test.explicit base64-static.so
+	./test.explicit -l ./base64-static.so -f 'now|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-now-global-mainAtExit: test.explicit base64-static.so
+	./test.explicit -a mainAtExit -l ./base64-static.so -f 'now|global'|grep mainAtExit
+	./test.explicit -a mainAtExit -l ./base64-static.so -f 'now|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-now-global-base64AtExit: test.explicit base64-static.so
+	./test.explicit -a base64AtExit -l ./base64-static.so -f 'now|global'|grep base64AtExit
+	./test.explicit -a base64AtExit -l ./base64-static.so -f 'now|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-now-local-noatexit: test.explicit base64-static.so
+	./test.explicit -l ./base64-static.so -f 'now|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-now-local-mainAtExit: test.explicit base64-static.so
+	./test.explicit -a mainAtExit -l ./base64-static.so -f 'now|local'|grep mainAtExit
+	./test.explicit -a mainAtExit -l ./base64-static.so -f 'now|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-now-local-base64AtExit: test.explicit base64-static.so
+	./test.explicit -a base64AtExit -l ./base64-static.so -f 'now|local'|grep base64AtExit
+	./test.explicit -a base64AtExit -l ./base64-static.so -f 'now|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-lazy-global-noatexit: test.explicit base64-static.so
+	./test.explicit -l ./base64-static.so -f 'lazy|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-lazy-global-mainAtExit: test.explicit base64-static.so
+	./test.explicit -a mainAtExit -l ./base64-static.so -f 'lazy|global'|grep mainAtExit
+	./test.explicit -a mainAtExit -l ./base64-static.so -f 'lazy|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-lazy-global-base64AtExit: test.explicit base64-static.so
+	./test.explicit -a base64AtExit -l ./base64-static.so -f 'lazy|global'|grep base64AtExit
+	./test.explicit -a base64AtExit -l ./base64-static.so -f 'lazy|global'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-lazy-local-noatexit: test.explicit base64-static.so
+	./test.explicit -l ./base64-static.so -f 'lazy|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-lazy-local-mainAtExit: test.explicit base64-static.so
+	./test.explicit -a mainAtExit -l ./base64-static.so -f 'lazy|local'|grep mainAtExit
+	./test.explicit -a mainAtExit -l ./base64-static.so -f 'lazy|local'|grep OPENSSL_cleanup
+
+test-explicit-base64-static-lazy-local-base64AtExit: test.explicit base64-static.so
+	./test.explicit -a base64AtExit -l ./base64-static.so -f 'lazy|local'|grep base64AtExit
+	./test.explicit -a base64AtExit -l ./base64-static.so -f 'lazy|local'|grep OPENSSL_cleanup
+
+
+#
+# Here we define targets to test statically and implicitly linked binaries
+# test exit handler
+#
+test-static-noatexit: test.static
+	./test.static | grep OPENSSL_cleanup
+
+test-static-mainAtExit: test.static
+	./test.static -a mainAtExit | grep mainAtExit
+	./test.static -a mainAtExit | grep OPENSSL_cleanup
+
+test-static-base64AtExit: test.static
+	./test.static -a base64AtExit | grep base64AtExit
+	./test.static -a base64AtExit | grep OPENSSL_cleanup
+
+test-implicit-noatexit: test.implicit
+	./test.implicit | grep OPENSSL_cleanup
+
+test-implicit-mainAtExit: test.implicit
+	./test.implicit -a mainAtExit | grep mainAtExit
+	./test.implicit -a mainAtExit | grep OPENSSL_cleanup
+
+test-implicit-base64AtExit: test.implicit
+	./test.implicit -a base64AtExit | grep base64AtExit
+	./test.implicit -a base64AtExit | grep OPENSSL_cleanup
+
+test-done:
+	@ echo
+
+clean:
+	rm -f *.so *.o test.implicitly test.explicit test.static
