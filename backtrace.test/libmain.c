@@ -11,7 +11,7 @@ static void __attribute__ ((destructor)) done(void);
 static void
 print_stack(void)
 {
-	bt_print_staack();
+	bt_print_stack();
 }
 
 static void
