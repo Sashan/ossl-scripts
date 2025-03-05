@@ -19,6 +19,8 @@ static unsigned long long *top = stack;
 static struct syms *syms = NULL;
 static int done = 0;
 static struct shlib shlibs[MAX_STACK_DEPTH];
+
+#ifdef	VERBOSE
 /*
  * write() is signal safe.
  */
@@ -43,6 +45,7 @@ write_hex(unsigned long long x)
 		mask = mask >> 4;
 	}
 }
+#endif
 
 static void
 add_shlib(Dl_info *dli)
@@ -82,12 +85,16 @@ sigtrap_hndl(int signum)
 	do {
 		unw_get_reg(&uw_cursor, UNW_REG_IP, &ip);
 		unw_get_reg(&uw_cursor, UNW_REG_SP, &sp);
+#ifdef VERBOSE
 		write(1, "ip = 0x", 6);
 		write_hex((unsigned long long)ip);
 		write(1, ", sp = 0x", 6); 
 		write_hex((unsigned long long)sp);
 		write(1, "\n", 1); 
+#endif
 	} while (unw_step(&uw_cursor) > 0);
+
+	done = 1;
 }
 #else
 #include <unwind.h>
@@ -99,8 +106,10 @@ collect_backtrace(struct _Unwind_Context *uw_context, void *cb_arg)
 
 	*top = fp;
 	top++;
+#ifdef VERBOSE
 	write_hex(fp);
 	write(1, "\n", 1);
+#endif
 
 	return (_URC_NO_REASON);
 }
@@ -113,6 +122,8 @@ sigtrap_hndl(int signum)
 
 	top = stack;
 	_Unwind_Backtrace(collect_backtrace, NULL);
+
+	done = 1;
 }
 #endif
 

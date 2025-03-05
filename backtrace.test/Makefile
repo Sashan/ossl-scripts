@@ -23,7 +23,7 @@ backtrace: main.o ksyms.o backtrace.o
 	    $(LDFLAGS) -lgcc_s -L$(OPENSSL_LIB_PATH) -lcrypto
 
 libbacktrace.so: libmain.o backtrace.o ksyms.o
-	$(CC) -shared -fPIC -o libbacktrace.so libmain.o backtrace.o ksyms.o
+	$(CC) -shared -fPIC -o libbacktrace.so libmain.o backtrace.o ksyms.o -ldl -lelf
 
 clean:
 	rm -f *.o
