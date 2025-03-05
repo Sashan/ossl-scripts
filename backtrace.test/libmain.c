@@ -1,26 +1,28 @@
 #include <stdlib.h>
 
-#include "backtrac.h"
+#include "backtrace.h"
 
+static void __attribute__ ((constructor)) init(void);
+static void __attribute__ ((destructor)) done(void);
 /*
  * We need to fire at exit, so all shared libraries are still loaded,
  * so we will be able to resolve symbols.
  */
 static void
-on_exit(void)
+print_stack(void)
 {
 	bt_print_staack();
 }
 
-void
-_init(void)
+static void
+init(void)
 {
 	bt_init();
-	atexit(on_exit);
+	atexit(print_stack);
 }
 
-void
-_fini(void)
+static void
+done(void)
 {
 	bt_done();
 }
