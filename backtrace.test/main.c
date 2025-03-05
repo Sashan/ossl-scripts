@@ -65,7 +65,7 @@ add_shlib(Dl_info *dli)
 
 #include <libunwind.h>
 
-void
+static void
 sigtrap_hndl(int signum)
 {
 	unw_cursor_t uw_cursor;
@@ -89,7 +89,7 @@ sigtrap_hndl(int signum)
 #include <unwind.h>
 
 static _Unwind_Reason_Code
-print_frame(struct _Unwind_Context *uw_context, void *cb_arg)
+collect_backtrace(struct _Unwind_Context *uw_context, void *cb_arg)
 {
 	unsigned long long fp = _Unwind_GetIP(uw_context);
 
@@ -101,15 +101,15 @@ print_frame(struct _Unwind_Context *uw_context, void *cb_arg)
 	return (_URC_NO_REASON);
 }
 
-void
+static void
 sigtrap_hndl(int signum)
 {
 	top = stack;
-	_Unwind_Backtrace(print_frame, NULL);
+	_Unwind_Backtrace(collect_backtrace, NULL);
 }
 #endif
 
-void
+static void
 load_syms(void)
 {
 	Dl_info	dli;
@@ -128,7 +128,7 @@ load_syms(void)
 	}
 }
 
-void
+static void
 print_stack(void)
 {
 	Dl_info	dli;
@@ -144,7 +144,7 @@ print_stack(void)
 	}
 }
 
-void
+static void
 do_sha256(void)
 {
 	unsigned char	 md_value[EVP_MAX_MD_SIZE];
