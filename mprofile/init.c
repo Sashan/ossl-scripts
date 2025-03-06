@@ -1,8 +1,9 @@
-#include "memstats.h"
+#include <stdlib.h>
+#include "mprofile.h"
 
 extern void *__real_CRYPTO_malloc(size_t, const char *, int);
 extern void __real_CRYPTO_free(void *, const char *, int);
-extern voiid *__real_CRYPTO_realloc(void *, size_t, const char *, int);
+extern void *__real_CRYPTO_realloc(void *, size_t, const char *, int);
 
 mprofile_t	*mp = NULL;	/* profile should be per thread */
 
@@ -22,7 +23,7 @@ save_profile(void)
 static void
 init(void)
 {
-	mprofile_create(void);
+	mp = mprofile_create();
 	atexit(save_profile);
 }
 
@@ -56,7 +57,7 @@ __wrap_CRYPTO_malloc(size_t sz, const char *file, int line)
 #ifdef _WITH_STACKTRACE
 	char stack_buf[512];
 	mprofile_stack_t *mps = mprofile_init_stack(stack_buf,
-	    sizeof (stack_buf));;
+	    sizeof (stack_buf));
 #else
 	mprofile_stack_t *mps = NULL;
 #endif
@@ -65,7 +66,7 @@ __wrap_CRYPTO_malloc(size_t sz, const char *file, int line)
 #ifdef _WITH_STACKTRACE
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif	/* _WITH_STACKTRACE */
-	mprofile_record_alloc(rv. sz, mps);
+	mprofile_record_alloc(mp, rv, sz, mps);
 
 	return (rv);
 }
@@ -84,8 +85,8 @@ __wrap_CRYPTO_free(void *b, const char *file, int line)
 #ifdef _WITH_STACKTRACE
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif
-	mprofile_record_free(rv, mps);
-	__real_CRYPTO_free(b, file, len);
+	mprofile_record_free(mp, b, mps);
+	__real_CRYPTO_free(b, file, line);
 }
 
 void *
@@ -107,10 +108,10 @@ __wrap_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 #ifdef _WITH_STACKTRACE
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif	/* _WITH_STACKTRACE */
-	if (sz == NULL)
-		mprofile_record_free(rv, mps);
+	if (sz == 0)
+		mprofile_record_free(mp, rv, mps);
 	else
-		mprofile_record_realloc(rv, sz, b, mps);
+		mprofile_record_realloc(mp, rv, sz, b, mps);
 
 	return (rv);
 }

@@ -1,11 +1,11 @@
 CPPFLAGS=-I/usr/lib/gcc/x86_64-linux-gnu/13/include
 CPPFLAGS+=-D_GNU_SOURCE
+CPPFLAGS+=-D_WITH_STACKTRACE
 CPPFLAGS+=-fPIC
 LDFLAGS=-L/usr/lib/gcc/x86_64-linux-gnu/13/
 
 all: libmprofile.so
 
-init.c   ksyms.c  record.c stack.c
 init.o: init.c
 	$(CC) $(CPPFLAGS) -c -O0 -g -o init.o init.c
 

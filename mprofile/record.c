@@ -5,7 +5,7 @@
 
 #include "utils/queue.h"
 #include "utils/tree.h"
-#include "utils/kelf.h"
+#include "kelf.h"
 
 #include "mprofile.h"
 
@@ -19,6 +19,7 @@ enum {
 #define	MPROFILE_REC_REALLOC	"\"realloc\""
 #define	MPROFILE_REC_SZ		"\"rsize\""
 #define	MPROFILE_REC_STATE	"\"state\""
+#define	MPROFILE_REC_STACK_ID	"\"stack_id\""
 #define	MPROFILE_TIMESTAMP	"\"time\""
 #define	MPROFILE_TIME_S		"\"s\""
 #define	MPROFILE_TIME_NS	"\"ns\""
@@ -27,6 +28,7 @@ struct mprofile_record {
 	void				*mpr_realloc;
 	size_t	 			 mpr_sz;
 	char				 mpr_state;
+	unsigned int			 mpr_stack_id;
 	struct timespec			 mpr_ts;
 	LIST_ENTRY(mprofile_record)	 mpr_le;
 };
@@ -36,25 +38,27 @@ struct mprofile_record {
 #define	MPROFILE_RS_STACKS	"\"stack_list\""
 struct mprofile_record_set {
 	size_t				 mrs_sz;
-	LIST_HEAD(mprofile_record)	 mrs_lhead;
-	mprofile_stack_set_t		*mrs_stset;
+	LIST_HEAD(mre_list,
+	    mprofile_record_set)	 mrs_lhead;
 	RB_ENTRY(mprofile_record_set)	 mrs_rbe;
 };
 
 struct mprofile_entry {
 	size_t			mpe_max_sz;
-	RB_HEAD(mprofile_entry)	mpe_rbh;
-}
+	RB_HEAD(mpe_rb,
+	    mprofile_entry)	mpe_rbh;
+};
 
 #define	MPROFILE_COUNT	32
 struct mprofile {
 	unsigned int		mp_cnt;
+	mprofile_stset_t	*mp_stset;
 	struct mprofile_entry	mp_entries[MPROFILE_COUNT];
 };
 
 struct shlib {
-	char *shl_name,
-	unsigned long shl_base;
+	char		*shl_name;
+	unsigned long	 shl_base;
 };
 
 #define	MAX_SHLIBS	32
@@ -66,7 +70,7 @@ static struct ksyms *syms = NULL;
 static int compare_record_set(struct mprofile_record_set *,
     struct mprofile_record_set *);
 
-RB_GENERATE_STATIC(mprofile_entry, mprofile_record_set, mrs_rbe,
+RB_GENERATE_STATIC(mpe_rb, mprofile_record_set, mrs_rbe,
     compare_record_set);
 
 static int
@@ -86,9 +90,6 @@ destroy_record_set(struct mprofile_record_set *mrs)
 {
 	struct mprofile_record *mpr, *walk;
 
-#ifdef _WITH_STACKTRACE
-	mprofile_destroy_stset(mrs->mrs_stset);
-#endif
 	LIST_FOREACH_SAFE(mpr, &mrs->mrs_lhead, mpr_le, walk) {
 		LIST_REMOVE(mpr, mpr_le);
 		free(mpr);
@@ -146,9 +147,6 @@ create_record_set_for_size(mprofile_entry *mpe, size_t sz)
 	LIST_INIT(&mrs->mrs_lhead);
 	RB_INSERT(mprofile_record_set, &mpe->mpe_rbh, mrs);
 
-#ifdef _WITH_STACKTRACE
-	mrs->mrs_stset = mprofile_create_stset();
-#endif
 	return (mrs);
 }
 
@@ -166,31 +164,6 @@ create_record(void)
 	clock_gettime(CLOCK_REALTIME, &mpr->mpr_ts);
 	return mpr;
 }
-
-void
-print_trace(unsigned long long frame, void *f_arg)
-{
-	FILE *f = (FILE *)f_arg;
-	char buf[90];
-
-	kelf_snprintsym(syms, bud, sizeof (buf), frame, 0)
-	fprintf(f, "\"%s\", ", buf);
-}
-
-#ifdef _WITH_STACKTRACE
-static void
-print_stack(FILE *f, mprofile_stack_t *stack)
-{
-	fprintf(f, "\t\t{\n");
-	fprintf(f, "\t\t\t\"stack_id\" : %u,\n", mprofile_get_stack_id(stack);
-	fprintf(f, "\t\t\t\"stack_count\" : %u,\n",
-	    mprofile_get_stack_count(stack);
-	fprintf(f, "\t\t\t\"stack_trace\" : [ ",
-	mprofile_walk_stack(stack, print_trace, f);
-	fprintf(f, "\"\" ]\n");
-	fprintf(f, "\t\t}");
-}
-#endif
 
 static void
 save_mprofile_record(FILE *f, struct mprofile_record *mpr)
@@ -216,6 +189,8 @@ save_mprofile_record(FILE *f, struct mprofile_record *mpr)
 	    mpr->mpr_realloc);
 	fprintf(f, "\t\t\t%s : %z,\n", MPROFILE_REC_SZ, mpr->mpr_sz);
 	fprintf(f, "\t\t\t%s : %s,\n", MPROFILE_REC_STATE, state);
+	fprintf(f, "\t\t\t%s : %u,\n", MPROFILE_REC_STACK_ID,
+	    mpr->mpr_stack_id);
 	fprintf(f, "\t\t\t%s : {\n", MPROFILE_TIMESTAMP);
 	fprintf(f, "\t\t\t\t%s : %lu,\n", MPROFILE_TIME_S, mpr->mpr_ts.tv_sec);
 	fprintf(f, "\t\t\t\t%s : %lu,\n", MPROFILE_TIME_NS,
@@ -229,9 +204,6 @@ save_mprofile_entry(FILE *f, struct mprofile_entry *mpe)
 {
 	struct mprofile_record_set *mrs;
 	struct mprofile_record *mpr;
-#ifdef _WITH_STACKTRACE
-	mprofile_stack_t *mps;
-#endif
 
 	if (RB_EMPTY(&mpe->mpe_rbh))
 		return;
@@ -239,19 +211,6 @@ save_mprofile_entry(FILE *f, struct mprofile_entry *mpe)
 	RB_FOREACH(mrs, mprofile_record_set, &mpe->mpe_rbh) {
 		fprintf(f, "\t{\n");
 		fprintf(f, "\t\t%s : %z\n", MPROFILE_RS_SZ, mrs->mrs_sz);
-#ifdef _WITH_STACKTRACE
-		mps = mprofile_get_next_stack(mrs->mrs_stset, NULL);
-		fprintf(f, "\t\t%s : [\n", MPROFILE_RS_STACKS);
-		while (mps != NULL) {
-			mprofile_print_stack(f, mps);
-			mps = mprofile_get_next_stack(mrs->mrs_stset, mps);
-			if (mrs != NULL) {
-				print_stack(f, mps);
-				fprintf(",\n");
-			}
-		}
-		fprintf(f, "\t\t],\n");
-#endif
 		fprintf(f, "\t\t%s : [\n", MPROFILE_RS_BUFLIST);
 		LIST_FOREACH(mpr, &mre->mrs_lhead, mpr_le)
 			save_mprofile_record(f, mpr);
@@ -283,8 +242,36 @@ mprofile_init(void)
 		mp->mp_entries[i].mpe_max_sz = sizes[i];
 	}
 
+#ifdef _WITH_STACKTRACE
+	mp->mp_stset = mprofile_create_stset();
+#endif
 	return (mp);
 }
+
+#ifdef _WITH_STACKTRACE
+static void
+print_trace(unsigned long long frame, void *f_arg)
+{
+	FILE *f = (FILE *)f_arg;
+	char buf[90];
+
+	kelf_snprintsym(syms, bud, sizeof (buf), frame, 0)
+	fprintf(f, "\"%s\", ", buf);
+}
+
+static void
+print_stack(FILE *f, mprofile_stack_t *stack)
+{
+	fprintf(f, "\t{\n");
+	fprintf(f, "\t\t\"stack_id\" : %u,\n", mprofile_get_stack_id(stack);
+	fprintf(f, "\t\t\"stack_count\" : %u,\n",
+	    mprofile_get_stack_count(stack);
+	fprintf(f, "\t\t\"stack_trace\" : [ ",
+	mprofile_walk_stack(stack, print_trace, f);
+	fprintf(f, "\t\" ]\n");
+	fprintf(f, "\t}");
+}
+#endif
 
 void
 mprofile_save(mprofile_t *mp)
@@ -292,6 +279,7 @@ mprofile_save(mprofile_t *mp)
 	unsigned int i;
 	char *fname = getenv("MPROFILE_OUTF");
 	FILE *f;
+	mprofile_stack_t *stack;
 
 	if (fname == NULL)
 		return;
@@ -301,10 +289,22 @@ mprofile_save(mprofile_t *mp)
 		return;
 
 	fprintf(f, "[\n");
-	for (i = 0; i < mp->mp_cnt, i++) {
+	for (i = 0; i < mp->mp_cnt, i++)
 		save_mprofile_entry(f, &mp->mp_entries[i]);
+	fprintf(f, "]");
+
+#ifdef _WITH_STACKTRACE
+	fprintf(f, "\n[\n");
+	mps = mprofile_get_next_stack(mrs->mrs_stset, NULL);
+	while (mps != NULL) {
+		print_stack(f, stack);
+		stack = mprofile_get_next_stack(mrs->mrs_stset, mps);
+		if (stack != NULL) {
+			fprintf(",\n");
+		}
 	}
 	fprintf(f, "]");
+#endif
 
 	fclose(f);
 }
@@ -325,7 +325,7 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz, mprofile_stack_t
 {
 	struct mprofile_entry *mpe = find_entry_for_size(buf_sz);
 	struct mprofile_record_set *mrs = find_record_set_for_size(mpe, buf_sz);
-	struct mprofile_record mpr;
+	struct mprofile_record *mpr;
 
 	if (mrs == NULL) {
 		mrs = create_record_set_for_size(mpe, buf_sz);
@@ -340,7 +340,8 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz, mprofile_stack_t
 	LIST_INSERT_HEAD(&mrs->mrs_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
-	mprofile_add_stack(mrs->mrs_stset, mps);
+	mps = mprofile_add_stack(mp->mp_stset, mps);
+	mpr->mpr_stack_id = mprofile_get_stack_id(
 #endif
 }
 
@@ -364,7 +365,8 @@ mprofile_record_free(mprofile_t *mp, void *buf, size_t buf_sz, mprofile_stack_t 
 	LIST_INSERT_HEAD(&mrs->mrs_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
-	mprofile_add_stack(mrs->mrs_stset, mps);
+	mps = mprofile_add_stack(mp->mp_stset, mps);
+	mpr->mpr_stack_id = mprofile_get_stack_id(
 #endif
 }
 
@@ -390,7 +392,8 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	LIST_INSERT_HEAD(&mrs->mrs_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
-	mprofile_add_stack(mrs->mrs_stset, mps);
+	mps = mprofile_add_stack(mp->mp_stset, mps);
+	mpr->mpr_stack_id = mprofile_get_stack_id(
 #endif
 }
 
