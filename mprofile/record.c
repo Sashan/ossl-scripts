@@ -101,7 +101,7 @@ print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 }
 
 mprofile_t *
-mprofile_init(void)
+mprofile_create(void)
 {
 	mprofile_t *mp;
 

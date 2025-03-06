@@ -8,12 +8,13 @@ extern void *__real_CRYPTO_realloc(void *, size_t, const char *, int);
 mprofile_t	*mp = NULL;	/* profile should be per thread */
 
 static void __attribute__ ((constructor)) init(void);
-static void __attribute__ ((destructor)) done(void);
 
 static void
 save_profile(void)
 {
 	mprofile_save(mp);
+	mprofile_destroy(mp);
+	mprofile_done();
 }
 
 /*
@@ -26,14 +27,6 @@ init(void)
 	mp = mprofile_create();
 	atexit(save_profile);
 }
-
-static void
-done(void)
-{
-	mprofile_destroy(mp);
-	mprofile_done();
-}
-
 
 #ifdef _WITH_STACKTRACE
 #include <unwind.h>
