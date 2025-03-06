@@ -98,7 +98,6 @@ print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 	fprintf(f, "\t\t\t%s : %lu\n", MPROFILE_TIME_NS,
 	    mpr->mpr_ts.tv_nsec);
 	fprintf(f, "\t\t}\n");
-	fprintf(f, "\t},\n");
 }
 
 mprofile_t *
@@ -152,6 +151,7 @@ mprofile_save(mprofile_t *mp)
 	FILE *f;
 	mprofile_stack_t *stack;
 	struct mprofile_record *mpr;
+	int first = 1;
 
 	if (fname == NULL)
 		return;
@@ -161,8 +161,15 @@ mprofile_save(mprofile_t *mp)
 		return;
 
 	fprintf(f, "[\n");
-	LIST_FOREACH(mpr, &mp->mp_lhead, mpr_le)
+	LIST_FOREACH(mpr, &mp->mp_lhead, mpr_le) {
+		if (first == 0) {
+			fprintf(f, "\t},\n");
+			first = 0;
+		}
 		print_mprofile_record(f, mpr);
+	}
+	if (first == 0)
+		fprintf(f, "\t}\n");
 	fprintf(f, "]");
 
 #ifdef _WITH_STACKTRACE
