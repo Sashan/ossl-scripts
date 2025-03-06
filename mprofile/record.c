@@ -1,10 +1,11 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
+#include <stdint.h>
 #include <dlfcn.h>
 
 #include "utils/queue.h"
-#include "utils/tree.h"
 #include "kelf.h"
 
 #include "mprofile.h"
@@ -33,27 +34,9 @@ struct mprofile_record {
 	LIST_ENTRY(mprofile_record)	 mpr_le;
 };
 
-#define	MPROFILE_RS_SZ		"\"buf_sz\""
-#define	MPROFILE_RS_BUFLIST	"\"buf_list\""
-#define	MPROFILE_RS_STACKS	"\"stack_list\""
-struct mprofile_record_set {
-	size_t				 mrs_sz;
-	LIST_HEAD(mre_list,
-	    mprofile_record_set)	 mrs_lhead;
-	RB_ENTRY(mprofile_record_set)	 mrs_rbe;
-};
-
-struct mprofile_entry {
-	size_t			mpe_max_sz;
-	RB_HEAD(mpe_rb,
-	    mprofile_entry)	mpe_rbh;
-};
-
-#define	MPROFILE_COUNT	32
 struct mprofile {
-	unsigned int		mp_cnt;
-	mprofile_stset_t	*mp_stset;
-	struct mprofile_entry	mp_entries[MPROFILE_COUNT];
+	LIST_HEAD(mp_list, mprofile_record)	 mp_lhead;
+	mprofile_stset_t			*mp_stset;
 };
 
 struct shlib {
@@ -62,96 +45,13 @@ struct shlib {
 };
 
 #define	MAX_SHLIBS	32
-static struct shlib slibs[MAX_SHLIBS];
+static struct shlib shlibs[MAX_SHLIBS];
 
 /* we keep symbols global */
-static struct ksyms *syms = NULL;
+static struct syms *syms = NULL;
 
-static int compare_record_set(struct mprofile_record_set *,
-    struct mprofile_record_set *);
-
-RB_GENERATE_STATIC(mpe_rb, mprofile_record_set, mrs_rbe,
-    compare_record_set);
-
-static int
-compare_record_set(struct mprofile_record_set *a_mrs,
-    struct mprofile_record_set *b_mrs)
-{
-	if (a_mrs->mrs_sz < b_mrs->mrs_sz)
-		return (-1);
-	else if (a_mrs->mrs_sz > b_mrs->mrs_sz)
-		return (1);
-	else
-		return (0);
-}
-
-static void
-destroy_record_set(struct mprofile_record_set *mrs)
-{
-	struct mprofile_record *mpr, *walk;
-
-	LIST_FOREACH_SAFE(mpr, &mrs->mrs_lhead, mpr_le, walk) {
-		LIST_REMOVE(mpr, mpr_le);
-		free(mpr);
-	}
-
-	free(mrs);
-}
-
-static void
-destroy_entry(struct mprofile_entry *mpe)
-{
-	struct mprofile_record_set *mrs, *walk;
-
-	RB_FOREACH_SAFE(mrs, mprofile_entry, &mpe->mpe_rbh, walk) {
-		RB_REMOVE(mprofile_entry, mrs);
-		destroy_record_set(mrs);
-	}
-}
-
-static struct mprofile_entry *
-find_entry_for_size(mprofile_t *mp, size_t sz)
-{
-	unsigned int i;
-
-	for (i = 0; i < mp->mp_cnt; i++)
-		if (sz > mp->mp_entries[i].mpe_max_sz)
-			break;
-
-	if (i == mp->mp_cnt)
-		i--;
-
-	return (mp->mp_entries[i])
-}
-
-static struct mprofile_record_set *
-find_record_set_for_size(mprofile_entry *mpe, size_t sz)
-{
-	struct mprofile_record_set	key_mpe;
-
-	key_mrs.mrs_sz = sz;
-	return (RB_FIND(mprofile_record_set, &mpe->mpe_rbh, &key_mrs));
-}
-
-static struct mprofile_record_set *
-create_record_set_for_size(mprofile_entry *mpe, size_t sz)
-{
-	struct mprofile_record_set *mrs;
-
-	mrs = (struct mprofile_record_set *) malloc(
-	    sizeof (struct mprofile_record_set));
-	if (mrs == NULL)
-		return (NULL);
-
-	mrs->mrs_sz = sz;
-	LIST_INIT(&mrs->mrs_lhead);
-	RB_INSERT(mprofile_record_set, &mpe->mpe_rbh, mrs);
-
-	return (mrs);
-}
-
-static mprofile_record *
-create_record(void)
+static struct mprofile_record *
+create_mprofile_record(void)
 {
 	struct mprofile_record *mpr;
 
@@ -162,11 +62,12 @@ create_record(void)
 	memset(mpr, 0, sizeof (struct mprofile_record));
 
 	clock_gettime(CLOCK_REALTIME, &mpr->mpr_ts);
-	return mpr;
+
+	return (mpr);
 }
 
 static void
-save_mprofile_record(FILE *f, struct mprofile_record *mpr)
+print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 {
 	const char *state;
 
@@ -183,68 +84,37 @@ save_mprofile_record(FILE *f, struct mprofile_record *mpr)
 	default:
 		state = "\"???\"";
 	}
-	fprintf(f, "\t\t{\n");
-	fprintf(f, "\t\t\t%s : 0x%p,\n", MPROFILE_REC_MEM, mpr->mpr_mem);
-	fprintf(f, "\t\t\t%s : 0x%p,\n", MPROFILE_REC_REALLOC,
+	fprintf(f, "\t{\n");
+	fprintf(f, "\t\t%s : 0x%p,\n", MPROFILE_REC_MEM, mpr->mpr_mem);
+	fprintf(f, "\t\t%s : 0x%p,\n", MPROFILE_REC_REALLOC,
 	    mpr->mpr_realloc);
-	fprintf(f, "\t\t\t%s : %z,\n", MPROFILE_REC_SZ, mpr->mpr_sz);
-	fprintf(f, "\t\t\t%s : %s,\n", MPROFILE_REC_STATE, state);
-	fprintf(f, "\t\t\t%s : %u,\n", MPROFILE_REC_STACK_ID,
+	fprintf(f, "\t\t%s : %zu,\n", MPROFILE_REC_SZ, mpr->mpr_sz);
+	fprintf(f, "\t\t%s : %s,\n", MPROFILE_REC_STATE, state);
+	fprintf(f, "\t\t%s : %u,\n", MPROFILE_REC_STACK_ID,
 	    mpr->mpr_stack_id);
-	fprintf(f, "\t\t\t%s : {\n", MPROFILE_TIMESTAMP);
-	fprintf(f, "\t\t\t\t%s : %lu,\n", MPROFILE_TIME_S, mpr->mpr_ts.tv_sec);
-	fprintf(f, "\t\t\t\t%s : %lu,\n", MPROFILE_TIME_NS,
+	fprintf(f, "\t\t%s : {\n", MPROFILE_TIMESTAMP);
+	fprintf(f, "\t\t\t%s : %lu,\n", MPROFILE_TIME_S, mpr->mpr_ts.tv_sec);
+	fprintf(f, "\t\t\t%s : %lu,\n", MPROFILE_TIME_NS,
 	    mpr->mpr_ts.tv_nsec);
-	fprintf(f, "\t\t\t}\n");
-	fprintf(f, "\t\t},\n");
-}
-
-static void
-save_mprofile_entry(FILE *f, struct mprofile_entry *mpe)
-{
-	struct mprofile_record_set *mrs;
-	struct mprofile_record *mpr;
-
-	if (RB_EMPTY(&mpe->mpe_rbh))
-		return;
-
-	RB_FOREACH(mrs, mprofile_record_set, &mpe->mpe_rbh) {
-		fprintf(f, "\t{\n");
-		fprintf(f, "\t\t%s : %z\n", MPROFILE_RS_SZ, mrs->mrs_sz);
-		fprintf(f, "\t\t%s : [\n", MPROFILE_RS_BUFLIST);
-		LIST_FOREACH(mpr, &mre->mrs_lhead, mpr_le)
-			save_mprofile_record(f, mpr);
-		fprintf(f, "\t\t],\n");
-		fprintf(f, "\t},\n");
-	}
+	fprintf(f, "\t\t}\n");
+	fprintf(f, "\t},\n");
 }
 
 mprofile_t *
 mprofile_init(void)
 {
 	mprofile_t *mp;
-	unsigned int i;
-	/* the sizez here are pure guess work */
-	static size_t sizes[MPROFILE_COUNT] = {
-		0x8, 0x10, 0x20, 0x40, 0x80, 0x100, 0x200, 0x400, 0x800, 0x1000, /* 10 */
-		0x2000, 0x4000, 0x8000, 0x10400, 0x10800, 0x11000, 0x12000, 0x14000, /* 8 */
-		0x18000, 0x20000, 0x20100, 0x20200, 0x20400, 0x20800, 0x21000, 0x21200, /* 8 */
-		0x21400, 0x21800, 0x40000, 0x80000, 0x80400, 0x0 };
-	};
 
 	mp = (mprofile_t *) malloc(sizeof (mprofile_t));
 	if (mp == NULL)
 		return (NULL);
 
-	mp->mp_cnt = MPROFILE_COUNT;
-	for (i = 0; i < MPROFILE_COUNT; i++) {
-		RB_INIT(&mp->mp_entries[i].mpe_rbh);
-		mp->mp_entries[i].mpe_max_sz = sizes[i];
-	}
+	LIST_INIT(&mp->mp_lhead);
 
 #ifdef _WITH_STACKTRACE
 	mp->mp_stset = mprofile_create_stset();
 #endif
+
 	return (mp);
 }
 
@@ -255,7 +125,7 @@ print_trace(unsigned long long frame, void *f_arg)
 	FILE *f = (FILE *)f_arg;
 	char buf[90];
 
-	kelf_snprintsym(syms, bud, sizeof (buf), frame, 0)
+	kelf_snprintsym(syms, buf, sizeof (buf), frame, 0);
 	fprintf(f, "\"%s\", ", buf);
 }
 
@@ -263,10 +133,10 @@ static void
 print_stack(FILE *f, mprofile_stack_t *stack)
 {
 	fprintf(f, "\t{\n");
-	fprintf(f, "\t\t\"stack_id\" : %u,\n", mprofile_get_stack_id(stack);
+	fprintf(f, "\t\t\"stack_id\" : %u,\n", mprofile_get_stack_id(stack));
 	fprintf(f, "\t\t\"stack_count\" : %u,\n",
-	    mprofile_get_stack_count(stack);
-	fprintf(f, "\t\t\"stack_trace\" : [ ",
+	    mprofile_get_stack_count(stack));
+	fprintf(f, "\t\t\"stack_trace\" : [ ");
 	mprofile_walk_stack(stack, print_trace, f);
 	fprintf(f, "\t\" ]\n");
 	fprintf(f, "\t}");
@@ -280,6 +150,7 @@ mprofile_save(mprofile_t *mp)
 	char *fname = getenv("MPROFILE_OUTF");
 	FILE *f;
 	mprofile_stack_t *stack;
+	struct mprofile_record *mpr;
 
 	if (fname == NULL)
 		return;
@@ -289,19 +160,18 @@ mprofile_save(mprofile_t *mp)
 		return;
 
 	fprintf(f, "[\n");
-	for (i = 0; i < mp->mp_cnt, i++)
-		save_mprofile_entry(f, &mp->mp_entries[i]);
+	LIST_FOREACH(mpr, &mp->mp_lhead, mpr_le)
+		print_mprofile_record(f, mpr);
 	fprintf(f, "]");
 
 #ifdef _WITH_STACKTRACE
-	fprintf(f, "\n[\n");
-	mps = mprofile_get_next_stack(mrs->mrs_stset, NULL);
-	while (mps != NULL) {
+	fprintf(f, ",\n[\n");
+	stack = mprofile_get_next_stack(mp->mp_stset, NULL);
+	while (stack != NULL) {
 		print_stack(f, stack);
-		stack = mprofile_get_next_stack(mrs->mrs_stset, mps);
-		if (stack != NULL) {
-			fprintf(",\n");
-		}
+		stack = mprofile_get_next_stack(mp->mp_stset, stack);
+		if (stack != NULL)
+			fprintf(f, ",\n");
 	}
 	fprintf(f, "]");
 #endif
@@ -313,60 +183,54 @@ void
 mprofile_destroy(mprofile_t *mp)
 {
 	unsigned int i;
+	struct mprofile_record *mpr, *walk;
 
-	for (i = 0; i < mp->mp_cnt; i++)
-		destroy_entry(&mp->mp_entries[i]);
-
+	LIST_FOREACH_SAFE(mpr, &mp->mp_lhead, mpr_le, walk) {
+		LIST_REMOVE(mpr, mpr_le);
+		free(mpr);
+	}
+	mprofile_destroy_stset(mp->mp_stset);
 	free(mp);
 }
 
 void
-mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz, mprofile_stack_t *mps)
+mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz,
+    mprofile_stack_t *mps)
 {
-	struct mprofile_entry *mpe = find_entry_for_size(buf_sz);
-	struct mprofile_record_set *mrs = find_record_set_for_size(mpe, buf_sz);
 	struct mprofile_record *mpr;
 
-	if (mrs == NULL) {
-		mrs = create_record_set_for_size(mpe, buf_sz);
-		if (mrs == NULL)
-			return;
-	}
+	mpr = create_mprofile_record();
+	if (mpr == NULL)
+		return;
 
-	mpr = create_record();
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_state = ALLOC;
-	LIST_INSERT_HEAD(&mrs->mrs_lhead, mpr, mpr_le);
+	LIST_INSERT_HEAD(&mp->mp_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
-	mpr->mpr_stack_id = mprofile_get_stack_id(
+	mpr->mpr_stack_id = mprofile_get_stack_id(mps);
 #endif
 }
 
 void
-mprofile_record_free(mprofile_t *mp, void *buf, size_t buf_sz, mprofile_stack_t *mps)
+mprofile_record_free(mprofile_t *mp, void *buf, mprofile_stack_t *mps)
 {
-	struct mprofile_entry *mpe = find_entry_for_size(buf_sz);
-	struct mprofile_record_set *mrs = find_record_set_for_size(mpe, buf_sz);
-	struct mprofile_record mpr;
+	struct mprofile_record *mpr;
 
-	if (mrs == NULL) {
-		mrs = create_record_set_for_size(mpe, buf_sz);
-		if (mrs == NULL)
-			return;
-	}
+	mpr = create_mprofile_record();
+	if (mpr == NULL)
+		return;
 
-	mpr = create_record();
 	mpr->mpr_mem = buf;
-	mpr->mpr_sz = buf_sz;
+	mpr->mpr_sz = 0;
 	mpr->mpr_state = FREE;
-	LIST_INSERT_HEAD(&mrs->mrs_lhead, mpr, mpr_le);
+	LIST_INSERT_HEAD(&mp->mp_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
-	mpr->mpr_stack_id = mprofile_get_stack_id(
+	mpr->mpr_stack_id = mprofile_get_stack_id(mps);
 #endif
 }
 
@@ -374,26 +238,21 @@ void
 mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
     void *old_buf, mprofile_stack_t *mps)
 {
-	struct mprofile_entry *mpe = find_entry_for_size(buf_sz);
-	struct mprofile_record_set *mrs = find_record_set_for_size(mpe, buf_sz);
-	struct mprofile_record mpr;
+	struct mprofile_record *mpr;
 
-	if (mrs == NULL) {
-		mrs = create_record_set_for_size(mpe, buf_sz);
-		if (mrs == NULL)
-			return;
-	}
+	mpr = create_mprofile_record();
+	if (mpr == NULL)
+		return;
 
-	mpr = create_record();
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_realloc = old_buf;
 	mpr->mpr_state = REALLOC;
-	LIST_INSERT_HEAD(&mrs->mrs_lhead, mpr, mpr_le);
+	LIST_INSERT_HEAD(&mp->mp_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
-	mpr->mpr_stack_id = mprofile_get_stack_id(
+	mpr->mpr_stack_id = mprofile_get_stack_id(mps);
 #endif
 }
 
@@ -415,12 +274,12 @@ add_shlib(Dl_info *dli)
 }
 
 static void
-walks_stack(unsigned long long frame, void *arg)
+walk_stack(unsigned long long frame, void *arg)
 {
-	DL_info dli;
+	Dl_info dli;
 
-	if (dladdr((void *)frame, &dli != 0)
-		add_shlib(dli);
+	if (dladdr((uintptr_t *)frame, &dli) != 0)
+		add_shlib(&dli);
 }
 
 /*
@@ -428,33 +287,24 @@ walks_stack(unsigned long long frame, void *arg)
  * to find list of shared libraries. There must
  * better way to obtain the list of shared libraries.
  */
-static void
-visit_stacks(struct mprofile_entry *mpe)
-{
-	struct mprofile_record_set *mrs;
-	mprofile_stack_t *stack;
-
-	RB_FOREACH(mrs, mprofile_record_set, &mpe->mpe_rbh) {
-		stack = mprofile_get_next_stack(mrs->mrs_stset, NULL);
-		while (stack != NULL) {
-			mprofile_walk_stack(mps, walk_stack, NULL);
-			stack = mprofile_get_next_stack(mrs->mrs_stset, stack);
-		}
-	}
-}
-
 void
 mprofile_load_syms(mprofile_t *mp)
 {
+#ifdef _WITH_STACKTRACE
 	unsigned int	i;
+	mprofile_stack_t *stack;
 
-	for (i = 0; i < MPROFILE_COUNT; i++) 
-		visit_stacks(&mp->mp_entries[i])
+	stack = mprofile_get_next_stack(mp->mp_stset, NULL);
+	while (stack != NULL) {
+		mprofile_walk_stack(stack, walk_stack, NULL);
+		stack = mprofile_get_next_stack(mp->mp_stset, stack);
+	}
 
 	for (i = 0; i < MAX_SHLIBS; i++) {
 		if (shlibs[i].shl_name != NULL)
 			syms = kelf_open(shlibs[i].shl_name, syms, shlibs[i].shl_base);
 	}
+#endif
 }
 
 void
@@ -465,5 +315,5 @@ mprofile_done(void)
 	for (i = 0; i < MAX_SHLIBS; i++)
 		free(shlibs[i].shl_name);
 
-	 kelf_close(syms);
+	kelf_close(syms);
 }

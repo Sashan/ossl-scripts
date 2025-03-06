@@ -9,12 +9,12 @@ typedef struct mprofile mprofile_t;
 #ifdef _WITH_STACKTRACE
 mprofile_stset_t *mprofile_create_stset();
 void mprofile_destroy_stset(mprofile_stset_t *);
-void mprofile_add_stack(mprofile_stset_t *, mprofile_stack_t *);
+mprofile_stack_t * mprofile_add_stack(mprofile_stset_t *, mprofile_stack_t *);
 mprofile_stack_t *mprofile_get_next_stack(mprofile_stset_t *,
     mprofile_stack_t *);
 mprofile_stack_t *mprofile_init_stack(char *, size_t);
 mprofile_stack_t *mprofile_copy_stack(mprofile_stack_t *);
-void mprofile_walk_stack(mprofile_stset_t *,
+void mprofile_walk_stack(mprofile_stack_t *,
     void(*)(unsigned long long, void *), void *);
 void mprofile_destroy_stack(mprofile_stack_t *);
 void mprofile_push_frame(mprofile_stack_t *, unsigned long long);

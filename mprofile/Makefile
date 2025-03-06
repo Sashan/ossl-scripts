@@ -19,7 +19,8 @@ stack.o: stack.c
 	$(CC) $(CPPFLAGS) -c -O0 -g -o stack.o stack.c
 
 libmprofile.so: init.o ksyms.o record.o stack.o
-	$(CC) -shared -fPIC -o libbacktrace.so libmain.o backtrace.o ksyms.o -ldl -lelf
+	$(CC) -shared -fPIC -o libbacktrace.so init.o record.o \
+	    stack.o ksyms.o -ldl -lelf
 
 clean:
 	rm -f *.o

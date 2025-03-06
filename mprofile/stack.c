@@ -1,13 +1,13 @@
 #include <stdlib.h>
+#include <string.h>
+#include <assert.h>
 
 #include "utils/tree.h"
+#include "mprofile.h"
 
 #define	MPS_STACK_DEPTH		64
 
 #define	MPS_FLAG_MANAGED	1
-
-struct mprofile_stack_managed {
-};
 
 struct mprofile_stack {
 	size_t				 mps_stack_limit;
@@ -16,7 +16,7 @@ struct mprofile_stack {
 	unsigned int			 mps_flags;
 	unsigned int			 mps_count;
 	pthread_t			 mps_thread;
-	RB_ENTRY(mprofile_stack_managed) mps_rbe;
+	RB_ENTRY(mprofile_stack)	 mps_rbe;
 	unsigned long long		*mps_stack;
 };
 
@@ -26,7 +26,7 @@ struct mprofile_stack_set {
 
 static int stack_compare(mprofile_stack_t *, mprofile_stack_t *);
 
-RB_GENERATE_STATIC(mprofile_stack_set, mprofile_stack, mps_rbe, stack_compare);
+RB_GENERATE_STATIC(mp_stack_set, mprofile_stack, mps_rbe, stack_compare);
 
 static int
 stack_compare(mprofile_stack_t *a_mps, mprofile_stack_t *b_mps)
@@ -41,16 +41,16 @@ stack_compare(mprofile_stack_t *a_mps, mprofile_stack_t *b_mps)
 	    (i < b_mps->mps_stack_depth))
 		i++;
 
-	if (a_mps->mps_stack[i] < b_mps->mps_stack_depth)
+	if (a_mps->mps_stack[i] < b_mps->mps_stack[i])
 		return (-1);
-	else if (a_mps->mps_stack[i] > b_mps->mps_stack_depth[i])
+	else if (a_mps->mps_stack[i] > b_mps->mps_stack[i])
 		return (1);
 
 	return (0);
 }
 
 mprofile_stack_t *
-mprofile_init_stack(void *buf, size_t buf_sz)
+mprofile_init_stack(char *buf, size_t buf_sz)
 {
 	mprofile_stack_t *mps;
 	size_t		  stack_sz;
@@ -71,7 +71,7 @@ mprofile_init_stack(void *buf, size_t buf_sz)
 		mps->mps_count = 0;
 	} else {
 		if (buf_sz <
-		    (sizeof (mprofile_stack_t) + (sizeof (unsigned long long))
+		    (sizeof (mprofile_stack_t) + (sizeof (unsigned long long))))
 			return NULL;
 		memset(buf, 0, buf_sz);
 		mps = (mprofile_stack_t *)buf;
@@ -91,7 +91,7 @@ mprofile_copy_stack(mprofile_stack_t *mps)
 	unsigned int i;
 
 	new_mps = (mprofile_stack_t *) malloc(
-		sizeof (struct mprofile_stack_managed) +
+		sizeof (struct mprofile_stack) +
 		sizeof (unsigned long long) * mps->mps_stack_depth);
 	if (new_mps == NULL)
 		return (NULL);
@@ -111,30 +111,30 @@ mprofile_copy_stack(mprofile_stack_t *mps)
 		new_mps->mps_thread = 0; /* get thread id */
 	}
 
-	return (msm_mps);
+	return (new_mps);
 }
 
 mprofile_stack_t *
-mprofile_add_stack(mprofile_stset_t *stset. mprofile_stack_t *mps)
+mprofile_add_stack(mprofile_stset_t *stset, mprofile_stack_t *new_mps)
 {
-	struct mprofile_stack_managed	*found_mps;
-	static unsigned int		 stack_id = 1;
+	mprofile_stack_t	*mps;
+	static unsigned int	 stack_id = 1;
 
 	if (stset == NULL)
 		return (NULL);
 
-	found_mps = RB_FIND(mp_stack_set, &stset->stset_rbh, mps);
-	if (found_mps) {
-		found_mps->mps_count++;
+	mps = RB_FIND(mp_stack_set, &stset->stset_rbh, new_mps);
+	if (mps != NULL) {
+		mps->mps_count++;
 	} else {
-		found_mps = mprofile_copy_stack(mps);
-		if (found_mps == NULL)
+		mps = mprofile_copy_stack(new_mps);
+		if (mps == NULL)
 			return (NULL);
-		found_mps->mps_stack_id = stack_id++;
-		RB_INSERT(mp_stack_set, &stset->stset_rbh, found_mps);
+		mps->mps_stack_id = stack_id++;
+		RB_INSERT(mp_stack_set, &stset->stset_rbh, mps);
 	}
 
-	return (found_mps);
+	return (mps);
 }
 
 void
@@ -142,7 +142,7 @@ mprofile_destroy_stack(mprofile_stack_t *mps)
 {
 	assert(mps->mps_flags == MPS_FLAG_MANAGED);
 
-	free(mps->mps_msm);
+	free(mps);
 }
 
 void
@@ -157,14 +157,14 @@ mprofile_push_frame(mprofile_stack_t *mps, unsigned long long frame)
 	}
 }
 
-mprofile_stack_set_t *
+mprofile_stset_t *
 mprofile_create_stset(void)
 {
-	mprofile_stack_set_t *stset;
+	mprofile_stset_t *stset;
 
-	stset = (mprofile_stack_set_t *) malloc(sizeof (mprofile_stack_set_t));
+	stset = (mprofile_stset_t *) malloc(sizeof (mprofile_stset_t));
 	if (stset != NULL)
-		RB_INIT(stset->stset_rbh);
+		RB_INIT(&stset->stset_rbh);
 
 	return (stset);
 }
@@ -172,14 +172,14 @@ mprofile_create_stset(void)
 void
 mprofile_destroy_stset(mprofile_stset_t *stset)
 {
-	struct mprofile_stack_managed *msm, *walk;
+	struct mprofile_stack *mps, *walk;
 
 	if (stset == NULL)
 		return;
 
-	RB_FOREACH_SAFE(msm, mprofile_stack_managed, &stset->stset_rbh, walk) {
-		RB_REMOVE(mprofile_stack_managed, &stset->stset_rbh, msm);
-		mprofile_destroy_stack(msm->msm_mps);
+	RB_FOREACH_SAFE(mps, mp_stack_set, &stset->stset_rbh, walk) {
+		RB_REMOVE(mp_stack_set, &stset->stset_rbh, mps);
+		mprofile_destroy_stack(mps);
 	}
 
 	free(stset);
@@ -192,14 +192,14 @@ mprofile_get_next_stack(mprofile_stset_t *stset, mprofile_stack_t *mps)
 		return (NULL);
 
 	if (mps == NULL)
-		return (RB_MIN(mprofile_stset, &stset->stset_rbh));
+		return (RB_MIN(mp_stack_set, &stset->stset_rbh));
 
-	return (RB_NEXT(mprofile_stset, mps));
+	return (RB_NEXT(mp_stack_set, &stset->stset_rbh, mps));
 }
 
 void
 mprofile_walk_stack(mprofile_stack_t *mps,
-    (void)(*walk_f)(unsigned long long, void *), void *walk_arg)
+    void(*walk_f)(unsigned long long, void *), void *walk_arg)
 {
 	unsigned int i;
 
