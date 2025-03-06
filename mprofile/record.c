@@ -95,7 +95,7 @@ print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 	    mpr->mpr_stack_id);
 	fprintf(f, "\t\t%s : {\n", MPROFILE_TIMESTAMP);
 	fprintf(f, "\t\t\t%s : %lu,\n", MPROFILE_TIME_S, mpr->mpr_ts.tv_sec);
-	fprintf(f, "\t\t\t%s : %lu,\n", MPROFILE_TIME_NS,
+	fprintf(f, "\t\t\t%s : %lu\n", MPROFILE_TIME_NS,
 	    mpr->mpr_ts.tv_nsec);
 	fprintf(f, "\t\t}\n");
 	fprintf(f, "\t},\n");
@@ -174,7 +174,7 @@ mprofile_save(mprofile_t *mp)
 		if (stack != NULL)
 			fprintf(f, ",\n");
 	}
-	fprintf(f, "]");
+	fprintf(f, "\n]");
 #endif
 
 	fclose(f);
