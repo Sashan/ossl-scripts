@@ -14,6 +14,7 @@ static void __attribute__ ((constructor)) init(void);
 static void
 save_profile(void)
 {
+	mprofile_load_syms(mp);
 	mprofile_save(mp);
 	mprofile_destroy(mp);
 	mprofile_done();

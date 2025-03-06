@@ -85,9 +85,10 @@ print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 		state = "\"???\"";
 	}
 	fprintf(f, "\t{\n");
-	fprintf(f, "\t\t%s : 0x%p,\n", MPROFILE_REC_MEM, mpr->mpr_mem);
-	fprintf(f, "\t\t%s : 0x%p,\n", MPROFILE_REC_REALLOC,
-	    mpr->mpr_realloc);
+	fprintf(f, "\t\t%s : 0x%llx,\n", MPROFILE_REC_MEM,
+	    (unsigned long long)mpr->mpr_mem);
+	fprintf(f, "\t\t%s : 0x%llx,\n", MPROFILE_REC_REALLOC,
+	    (unsigned long long)mpr->mpr_realloc);
 	fprintf(f, "\t\t%s : %zu,\n", MPROFILE_REC_SZ, mpr->mpr_sz);
 	fprintf(f, "\t\t%s : %s,\n", MPROFILE_REC_STATE, state);
 	fprintf(f, "\t\t%s : %u,\n", MPROFILE_REC_STACK_ID,
@@ -138,7 +139,7 @@ print_stack(FILE *f, mprofile_stack_t *stack)
 	    mprofile_get_stack_count(stack));
 	fprintf(f, "\t\t\"stack_trace\" : [ ");
 	mprofile_walk_stack(stack, print_trace, f);
-	fprintf(f, "\t\" ]\n");
+	fprintf(f, "\"\" ]\n");
 	fprintf(f, "\t}");
 }
 #endif

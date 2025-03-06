@@ -205,14 +205,14 @@ kelf_snprintsym(struct syms *syms, char *str, size_t size, unsigned long pc,
 
 	offset = pc - (entry->sym_value + off);
 	if (offset != 0) {
-		return snprintf(str, size, "\n%s+0x%llx",
+		return snprintf(str, size, "%s+0x%llx",
 		    entry->sym_name, (unsigned long long)offset);
 	}
 
-	return snprintf(str, size, "\n%s", entry->sym_name);
+	return snprintf(str, size, "%s", entry->sym_name);
 
 fallback:
-	return snprintf(str, size, "\n0x%lx", pc);
+	return snprintf(str, size, "0x%lx", pc);
 }
 
 int
