@@ -85,9 +85,9 @@ print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 		state = "\"???\"";
 	}
 	fprintf(f, "\t{\n");
-	fprintf(f, "\t\t%s : 0x%llx,\n", MPROFILE_REC_MEM,
+	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_MEM,
 	    (unsigned long long)mpr->mpr_mem);
-	fprintf(f, "\t\t%s : 0x%llx,\n", MPROFILE_REC_REALLOC,
+	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_REALLOC,
 	    (unsigned long long)mpr->mpr_realloc);
 	fprintf(f, "\t\t%s : %zu,\n", MPROFILE_REC_SZ, mpr->mpr_sz);
 	fprintf(f, "\t\t%s : %s,\n", MPROFILE_REC_STATE, state);
