@@ -2,7 +2,9 @@ CPPFLAGS=-I/usr/lib/gcc/x86_64-linux-gnu/13/include
 CPPFLAGS+=-D_GNU_SOURCE
 CPPFLAGS+=-D_WITH_STACKTRACE
 CPPFLAGS+=-fPIC
+CPPFLAGS+=-I$(OPENSSL_HEADERS)
 LDFLAGS=-L/usr/lib/gcc/x86_64-linux-gnu/13/
+OSSLLIB=-L$(OPENSSL_LIB_PATH)
 
 all: libmprofile.so
 
@@ -20,7 +22,8 @@ stack.o: stack.c
 
 libmprofile.so: init.o ksyms.o record.o stack.o
 	$(CC) -shared -fPIC -o libmprofile.so init.o record.o \
-	    stack.o ksyms.o -ldl -lelf
+	    stack.o ksyms.o -ldl -lelf $(LDFLAGS) -lgcc_s \
+	    -L$(OPENSSL_LIB_DIR) -lcrypto
 
 clean:
 	rm -f *.o

@@ -1,9 +1,11 @@
 #include <stdlib.h>
+#include <openssl/crypto.h>
+
 #include "mprofile.h"
 
-extern void *__real_CRYPTO_malloc(size_t, const char *, int);
-extern void __real_CRYPTO_free(void *, const char *, int);
-extern void *__real_CRYPTO_realloc(void *, size_t, const char *, int);
+static void *mp_CRYPTO_malloc(size_t, const char *, int);
+static void mp_CRYPTO_free(void *, const char *, int);
+static void *mp_CRYPTO_realloc(void *, size_t, const char *, int);
 
 mprofile_t	*mp = NULL;	/* profile should be per thread */
 
@@ -25,6 +27,8 @@ static void
 init(void)
 {
 	mp = mprofile_create();
+	CRYPTO_set_mem_functions(mp_CRYPTO_malloc, mp_CRYPTO_realloc,
+	    mp_CRYPTO_free);
 	atexit(save_profile);
 }
 
@@ -35,7 +39,7 @@ static _Unwind_Reason_Code
 collect_backtrace(struct _Unwind_Context *uw_context, void *cb_arg)
 {
 	unsigned long long fp = _Unwind_GetIP(uw_context);
-	mprofile_stack_t *mps = (mprofile_stack_t *)mps;
+	mprofile_stack_t *mps = (mprofile_stack_t *)cb_arg;
 
 	mprofile_push_frame(mps, fp);
 
@@ -44,7 +48,7 @@ collect_backtrace(struct _Unwind_Context *uw_context, void *cb_arg)
 #endif
 
 void *
-__wrap_CRYPTO_malloc(size_t sz, const char *file, int line)
+mp_CRYPTO_malloc(size_t sz, const char *file, int line)
 {
 	void *rv;
 #ifdef _WITH_STACKTRACE
@@ -55,7 +59,7 @@ __wrap_CRYPTO_malloc(size_t sz, const char *file, int line)
 	mprofile_stack_t *mps = NULL;
 #endif
 
-	rv = __real_CRYPTO_malloc(sz, file, line);
+	rv = malloc(sz);
 #ifdef _WITH_STACKTRACE
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif	/* _WITH_STACKTRACE */
@@ -65,7 +69,7 @@ __wrap_CRYPTO_malloc(size_t sz, const char *file, int line)
 }
 
 void
-__wrap_CRYPTO_free(void *b, const char *file, int line)
+mp_CRYPTO_free(void *b, const char *file, int line)
 {
 #ifdef _WITH_STACKTRACE
 	char stack_buf[512];
@@ -79,11 +83,11 @@ __wrap_CRYPTO_free(void *b, const char *file, int line)
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif
 	mprofile_record_free(mp, b, mps);
-	__real_CRYPTO_free(b, file, line);
+	free(b);
 }
 
 void *
-__wrap_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
+mp_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 {
 	void *rv;
 #ifdef _WITH_STACKTRACE
@@ -94,7 +98,7 @@ __wrap_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 	mprofile_stack_t *mps = NULL;
 #endif
 
-	rv = __real_CRYPTO_realloc(b, sz, file, line);
+	rv = realloc(b, sz);
 	if (rv == NULL)
 		return (NULL);	/* consider recording failure */
 

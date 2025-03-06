@@ -53,32 +53,39 @@ mprofile_stack_t *
 mprofile_init_stack(char *buf, size_t buf_sz)
 {
 	mprofile_stack_t *mps;
+	unsigned char *stack_start;
 	size_t		  stack_sz;
 
 	if (buf == NULL) {
 		stack_sz =
-		    sizeof (struct mprofile_stack_set) +
-		    sizeof (unsigned long long) * (MPS_STACK_DEPTH - 1);
+		    sizeof (mprofile_stack_t) +
+		    sizeof (unsigned long long) * MPS_STACK_DEPTH;
 		mps = (mprofile_stack_t *) malloc(stack_sz);
 		if (mps == NULL)
 			return (NULL);
+		stack_start = (unsigned char *)mps;
+		mps += sizeof (mprofile_stack_t);
+		mps->mps_stack = (unsigned long long *)stack_start;
 		mps->mps_flags = MPS_FLAG_MANAGED;
 		mps->mps_stack_depth = 0;
 		mps->mps_stack_limit = MPS_STACK_DEPTH;
-		memset(mps->mps_stack, 0,
-		    sizeof (unsigned long long) * MPS_STACK_DEPTH);
 		mps->mps_thread = 0;	/* TODO: set thread id/pthread_t */
 		mps->mps_count = 0;
+		memset(mps->mps_stack, 0,
+		    sizeof (unsigned long long) * MPS_STACK_DEPTH);
 	} else {
 		if (buf_sz <
 		    (sizeof (mprofile_stack_t) + (sizeof (unsigned long long))))
 			return NULL;
 		memset(buf, 0, buf_sz);
 		mps = (mprofile_stack_t *)buf;
+		stack_start = buf;
+		stack_start += sizeof (mprofile_stack_t);
+		mps->mps_stack = (unsigned long long *)stack_start;
 		stack_sz = buf_sz - sizeof (mprofile_stack_t);
-		stack_sz += sizeof (unsigned long long);
 		mps->mps_stack_limit = stack_sz / sizeof (unsigned long long);
 		mps->mps_stack_depth = 0;
+		memset(mps->mps_stack, 0, stack_sz);
 	}
 
 	return (mps);
@@ -88,13 +95,18 @@ mprofile_stack_t *
 mprofile_copy_stack(mprofile_stack_t *mps)
 {
 	mprofile_stack_t *new_mps;
+	unsigned char *stack_start;
 	unsigned int i;
 
 	new_mps = (mprofile_stack_t *) malloc(
-		sizeof (struct mprofile_stack) +
-		sizeof (unsigned long long) * mps->mps_stack_depth);
+		sizeof (mprofile_stack_t) +
+		(sizeof (unsigned long long) * (mps->mps_stack_depth + 1)));
 	if (new_mps == NULL)
 		return (NULL);
+
+	stack_start = (unsigned char *)new_mps;
+	stack_start += sizeof (mprofile_stack_t);
+	new_mps->mps_stack = (unsigned long long *)stack_start;
 
 	for (i = 0; i < mps->mps_stack_depth; i++)
 		new_mps->mps_stack[i] = mps->mps_stack[i];
