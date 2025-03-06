@@ -162,10 +162,10 @@ mprofile_save(mprofile_t *mp)
 
 	fprintf(f, "{ \"allocations\" : [\n");
 	LIST_FOREACH(mpr, &mp->mp_lhead, mpr_le) {
-		if (first == 0) {
+		if (first == 0)
 			fprintf(f, "\t},\n");
+		else
 			first = 0;
-		}
 		print_mprofile_record(f, mpr);
 	}
 	if (first == 0)
@@ -173,7 +173,7 @@ mprofile_save(mprofile_t *mp)
 	fprintf(f, "],\n");
 
 #ifdef _WITH_STACKTRACE
-	fprintf(f, ",\n{ \"stcks\" : [\n");
+	fprintf(f, " \"stacks\" : [\n");
 	stack = mprofile_get_next_stack(mp->mp_stset, NULL);
 	while (stack != NULL) {
 		print_stack(f, stack);
