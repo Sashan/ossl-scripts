@@ -34,6 +34,28 @@ init(void)
 }
 
 #ifdef _WITH_STACKTRACE
+
+#ifdef USE_LIBUNWIND
+
+#include <libunwind.h>
+
+static void
+collect_backtrace(mprofile_stack_t *mps)
+{
+	unw_cursor_t uw_cursor;
+	unw_context_t uw_context;;
+	unw_word_t fp;
+
+	unw_getcontext(&uw_context);
+	unw_init_local(&uw_cursor, &uw_context);
+
+	do {
+		unw_get_reg(&uw_cursor, UNW_REG_IP, &fp);
+		mprofile_push_frame(mps, (unsigned long long)fp);
+	} while (unw_step(&uw_cursor) > 0);
+
+}
+#else	/* !USE_LIBUNWIND */
 #include <unwind.h>
 
 static _Unwind_Reason_Code
@@ -46,6 +68,7 @@ collect_backtrace(struct _Unwind_Context *uw_context, void *cb_arg)
 
 	return (_URC_NO_REASON);
 }
+#endif	/* USE_LIBUNWIND */
 #endif
 
 void *
@@ -62,7 +85,11 @@ mp_CRYPTO_malloc(size_t sz, const char *file, int line)
 
 	rv = malloc(sz);
 #ifdef _WITH_STACKTRACE
+#ifdef USE_LIBUNWIND
+	collect_backtrace(mps);
+#else
 	_Unwind_Backtrace(collect_backtrace, mps);
+#endif
 #endif	/* _WITH_STACKTRACE */
 	mprofile_record_alloc(mp, rv, sz, mps);
 
@@ -81,8 +108,12 @@ mp_CRYPTO_free(void *b, const char *file, int line)
 #endif
 
 #ifdef _WITH_STACKTRACE
+#ifdef USE_LIBUNWIND
+	collect_backtrace(mps);
+#else
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif
+#endif	/* _WITH_STACKTRACE */
 	mprofile_record_free(mp, b, mps);
 	free(b);
 }
@@ -104,7 +135,11 @@ mp_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 		return (NULL);	/* consider recording failure */
 
 #ifdef _WITH_STACKTRACE
+#ifdef USE_LIBUNWIND
+	collect_backtrace(mps);
+#else
 	_Unwind_Backtrace(collect_backtrace, mps);
+#endif
 #endif	/* _WITH_STACKTRACE */
 	if (sz == 0)
 		mprofile_record_free(mp, rv, mps);
