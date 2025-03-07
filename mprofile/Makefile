@@ -26,8 +26,10 @@ LDFLAGS+=-lgcc_s
 ##	 --rtlib=compiler-rt --unwindlib=libunwind
 ## as described here:
 ##	https://maskray.me/blog/2020-11-08-stack-unwinding
-##
+## libundwind is part of libc++ we need to grab it
 #LDFLAGS=-lLLVM
+#LDFLAGS+=-lc++
+#LDFLAGS+=-lm
 
 #
 # common options to add libcrypto
