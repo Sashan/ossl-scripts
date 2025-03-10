@@ -59,4 +59,4 @@ libmprofile.so: init.o ksyms.o record.o stack.o
 
 clean:
 	rm -f *.o
-	rm -f libmprofileso
+	rm -f libmprofile.so
