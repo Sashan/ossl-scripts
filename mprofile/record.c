@@ -218,7 +218,7 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_state = ALLOC;
-	LIST_INSERT_HEAD(&mp->mp_lhead, mpr, mpr_le);
+	LIST_INSERT_TAIL(&mp->mp_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
@@ -238,7 +238,7 @@ mprofile_record_free(mprofile_t *mp, void *buf, mprofile_stack_t *mps)
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = 0;
 	mpr->mpr_state = FREE;
-	LIST_INSERT_HEAD(&mp->mp_lhead, mpr, mpr_le);
+	LIST_INSERT_TAIL(&mp->mp_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
@@ -260,7 +260,7 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_realloc = old_buf;
 	mpr->mpr_state = REALLOC;
-	LIST_INSERT_HEAD(&mp->mp_lhead, mpr, mpr_le);
+	LIST_INSERT_TAIL(&mp->mp_lhead, mpr, mpr_le);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
