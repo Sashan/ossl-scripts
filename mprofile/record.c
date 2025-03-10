@@ -31,11 +31,11 @@ struct mprofile_record {
 	char				 mpr_state;
 	unsigned int			 mpr_stack_id;
 	struct timespec			 mpr_ts;
-	LIST_ENTRY(mprofile_record)	 mpr_le;
+	TAILQ_ENTRY(mprofile_record)	 mpr_tqe;
 };
 
 struct mprofile {
-	LIST_HEAD(mp_list, mprofile_record)	 mp_lhead;
+	TAILQ_HEAD(mp_list, mprofile_record)	 mp_tqhead;
 	mprofile_stset_t			*mp_stset;
 };
 
@@ -110,7 +110,7 @@ mprofile_create(void)
 	if (mp == NULL)
 		return (NULL);
 
-	LIST_INIT(&mp->mp_lhead);
+	TAILQ_INIT(&mp->mp_tqhead);
 
 #ifdef _WITH_STACKTRACE
 	mp->mp_stset = mprofile_create_stset();
@@ -162,7 +162,7 @@ mprofile_save(mprofile_t *mp)
 		return;
 
 	fprintf(f, "{ \"allocations\" : [\n");
-	LIST_FOREACH(mpr, &mp->mp_lhead, mpr_le) {
+	TAILQ_FOREACH(mpr, &mp->mp_tqhead, mpr_tqe) {
 		if (first == 0)
 			fprintf(f, "\t},\n");
 		else
@@ -197,8 +197,8 @@ mprofile_destroy(mprofile_t *mp)
 	unsigned int i;
 	struct mprofile_record *mpr, *walk;
 
-	LIST_FOREACH_SAFE(mpr, &mp->mp_lhead, mpr_le, walk) {
-		LIST_REMOVE(mpr, mpr_le);
+	TAILQ_FOREACH_SAFE(mpr, &mp->mp_tqhead, mpr_tqe, walk) {
+		TAILQ_REMOVE(&mp->mp_tqhead, mpr, mpr_tqe);
 		free(mpr);
 	}
 	mprofile_destroy_stset(mp->mp_stset);
@@ -218,7 +218,7 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_state = ALLOC;
-	LIST_INSERT_TAIL(&mp->mp_lhead, mpr, mpr_le);
+	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
@@ -238,7 +238,7 @@ mprofile_record_free(mprofile_t *mp, void *buf, mprofile_stack_t *mps)
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = 0;
 	mpr->mpr_state = FREE;
-	LIST_INSERT_TAIL(&mp->mp_lhead, mpr, mpr_le);
+	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
@@ -260,7 +260,7 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_realloc = old_buf;
 	mpr->mpr_state = REALLOC;
-	LIST_INSERT_TAIL(&mp->mp_lhead, mpr, mpr_le);
+	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
 	mps = mprofile_add_stack(mp->mp_stset, mps);
