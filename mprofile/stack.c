@@ -12,7 +12,7 @@
 
 struct mprofile_stack {
 	size_t				 mps_stack_limit;
-	unsigned int			 mps_stack_id;
+	unsigned int			 mps_id;
 	unsigned int			 mps_stack_depth;
 	unsigned int			 mps_flags;
 	unsigned int			 mps_count;
@@ -143,7 +143,7 @@ mprofile_add_stack(mprofile_stset_t *stset, mprofile_stack_t *new_mps)
 		mps = mprofile_copy_stack(new_mps);
 		if (mps == NULL)
 			return (NULL);
-		mps->mps_stack_id = stack_id++;
+		mps->mps_id = stack_id++;
 		RB_INSERT(mp_stack_set, &stset->stset_rbh, mps);
 	}
 
@@ -226,7 +226,7 @@ mprofile_get_stack_id(mprofile_stack_t *mps)
 	if (mps == NULL)
 		return (0);
 
-	return (mps->mps_stack_id);
+	return (mps->mps_id);
 }
 
 unsigned int

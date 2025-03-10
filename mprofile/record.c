@@ -16,6 +16,7 @@ enum {
 	REALLOC = 3
 };
 
+#define	MPROFILE_REC_ID		"\"id\""
 #define	MPROFILE_REC_MEM	"\"addr\""
 #define	MPROFILE_REC_REALLOC	"\"realloc\""
 #define	MPROFILE_REC_SZ		"\"rsize\""
@@ -25,6 +26,7 @@ enum {
 #define	MPROFILE_TIME_S		"\"s\""
 #define	MPROFILE_TIME_NS	"\"ns\""
 struct mprofile_record {
+	uint64_t			 mpr_id;
 	void				*mpr_mem;
 	void				*mpr_realloc;
 	size_t	 			 mpr_sz;
@@ -49,6 +51,9 @@ static struct shlib shlibs[MAX_SHLIBS];
 
 /* we keep symbols global */
 static struct syms *syms = NULL;
+
+/* TODO: must be atomic when going multithreaded */
+static uint64_t mpr_id = 1;
 
 static struct mprofile_record *
 create_mprofile_record(void)
@@ -85,6 +90,7 @@ print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 		state = "\"???\"";
 	}
 	fprintf(f, "\t{\n");
+	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_ID, mpr->mpr_id);
 	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_MEM,
 	    (unsigned long long)mpr->mpr_mem);
 	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_REALLOC,
@@ -134,7 +140,7 @@ static void
 print_stack(FILE *f, mprofile_stack_t *stack)
 {
 	fprintf(f, "\t{\n");
-	fprintf(f, "\t\t\"stack_id\" : %u,\n", mprofile_get_stack_id(stack));
+	fprintf(f, "\t\t\"id\" : %u,\n", mprofile_get_stack_id(stack));
 	fprintf(f, "\t\t\"stack_count\" : %u,\n",
 	    mprofile_get_stack_count(stack));
 	fprintf(f, "\t\t\"stack_trace\" : [ ");
@@ -218,6 +224,7 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_state = ALLOC;
+	mpr->mpr_id = mpr_id++;
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
@@ -238,6 +245,7 @@ mprofile_record_free(mprofile_t *mp, void *buf, mprofile_stack_t *mps)
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = 0;
 	mpr->mpr_state = FREE;
+	mpr->mpr_id = mpr_id++;
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
@@ -260,6 +268,7 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_realloc = old_buf;
 	mpr->mpr_state = REALLOC;
+	mpr->mpr_id = mpr_id++;
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
