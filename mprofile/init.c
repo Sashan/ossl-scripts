@@ -142,7 +142,9 @@ mp_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 #endif
 #endif	/* _WITH_STACKTRACE */
 	if (sz == 0)
-		mprofile_record_free(mp, rv, mps);
+		mprofile_record_free(mp, b, mps);
+	else if (b == NULL)
+		mprofile_record_alloc(mp, rv, sz, mps);
 	else
 		mprofile_record_realloc(mp, rv, sz, b, mps);
 
