@@ -54,6 +54,16 @@ def get_trace(st):
 
 class MProfile:
 	#
+	# traverse allocation chain back to the first operation
+	# in chain which causes the leak.
+	#
+	def __add_leak(self, mr):
+		leak = mr
+		while mr != None:
+			leak = mr
+			mr = self.get_prev(mr)
+		self._leaks.append(leak)
+	#
 	# correct memory operations come in pairs
 	#	alloc -> free
 	# or it can be a chain of
@@ -91,7 +101,7 @@ class MProfile:
 				set_nextid(mr, get_id(r_op))
 				set_previd(r_op, get_id(mr))
 			else:
-				self._leaks.append(mr)
+				self.__add_leak(mr)
 
 	def __get_chain(self, mr):
 		chain = []
@@ -207,20 +217,26 @@ if __name__ == "__main__":
 
 	mp = MProfile(j)
 
-	for ma in mp.alloc_ops():
-		print("allocated {0} [{1}]".format(get_rsize(ma), get_id(ma)), end='')
-		while get_nextid(ma) != 0:
-			ma = mp.get_mr(get_nextid(ma))
-			print("  -> {0} [{1}]  {2}".format(get_operation(ma), get_id(ma), mp.get_size(ma)), end='')
-		print("\n")
+	#for ma in mp.alloc_ops():
+	#	print("allocated {0} [{1}]".format(get_rsize(ma), get_id(ma)), end='')
+	#	while get_nextid(ma) != 0:
+	#		ma = mp.get_mr(get_nextid(ma))
+	#		print("  -> {0} [{1}]  {2}".format(get_operation(ma), get_id(ma), mp.get_size(ma)), end='')
+	#	print("\n")
 
-	leaks = list(mp.leaks())
+	leaks = mp.leaks()
 	if len(leaks) > 0:
 		print("Found {0} memory leaks".format(len(leaks)))
 		for l in leaks:
 			print("{0} [{1}] bytes".format(get_rsize(l), get_id(l)))
 			stack = mp.get_stack(l)
 			if stack == None:
-				continue
+				stack = []
 			for frame in stack:
 				print(frame)
+			print("allocated {0} [{1}]".format(get_rsize(l), get_id(l)), end='')
+			next_record = mp.get_next(l)
+			while next_record != None:
+				print(" -> {0} [{1}] {2}".format(get_operation(next_record), get_id(next_record), mp.get_size(next_record)), end='')
+				next_record = mp.get_next(next_record)
+			print("\n--------------")
