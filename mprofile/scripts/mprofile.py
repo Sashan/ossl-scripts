@@ -35,6 +35,20 @@ def get_operation(mr):
 def get_stackid(mr):
 	return mr["stack_id"]
 
+def get_nextid(mr):
+	return mr["next_id"]
+
+def get_previd(mr):
+	return mr["prev_id"]
+
+def set_nextid(mr, next_id):
+	mr["next_id"] = next_id
+	return
+
+def set_previd(mr, prev_id):
+	mr["prev_id"] = prev_id
+	return
+
 class MProfile:
 	#
 	# correct memory operations come in pairs
@@ -42,10 +56,10 @@ class MProfile:
 	# or it can be a chain of
 	#	alloc -> realloc -> realloc -> ... -> realloc -> free
 	#
-	# __create_pairs() private method constructs chains
+	# __create_chains() private method constructs chains
 	# of memory records to track memory operations
 	#
-	def __create_pairs(self):
+	def __create_chains(self):
 		#
 		# create a filter function which helps to
 		# find matching realloc/free for given 
@@ -71,10 +85,11 @@ class MProfile:
 			release_ops = list(filter(f, mem_records))
 			if (len(release_ops) > 0):
 				r_op = release_ops[0]
-				mr["next_id"] = get_id(r_op)
+				set_nextid(mr, get_id(r_op))
 				r_op["prev_id"] = get_id(mr)
+				set_previd(r_op, get_id(mr))
 			else:
-				print("Found nothing for {0}".format(get_id(mr)))
+				self._leaks.append(mr)
 
 	def __get_chain(self, mr):
 		chain = []
@@ -84,13 +99,18 @@ class MProfile:
 		return chain
 
 	def __init__(self, json_data):
+		self._leaks = []
 		self._mem_records = json_data["allocations"]
 		for mr in self._mem_records:
-			mr["prev_id"] = 0
-			mr["next_id"] = 0
+			set_previd(mr, 0)
+			set_nextid(mr, 0)
 		self._stacks = json_data["stacks"]
+		#
+		# call stacks in json data are dump of RB-tree,
+		# we need to sort the array/list by 'id'
+		#
 		self._stacks.sort(key = lambda x : x["id"])
-		self.__create_pairs()
+		self.__create_chains()
 
 	def alloc_failures(self):
 		return filter(
