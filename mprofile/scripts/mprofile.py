@@ -126,11 +126,7 @@ class MProfile:
 			get_size(x) > 0 else False, self._mem_records)
 
 	def leaks(self):
-		return filter(
-		    lambda x: True if is_alloc(x) and \
-			(get_rsize(x) + sum(map(lambda mr: self.get_size(mr), \
-			self.__get_chain(x)))) > 0 else False,
-			self._mem_records)
+		return self._leaks
 
 	def alloc_ops(self):
 		return filter(
