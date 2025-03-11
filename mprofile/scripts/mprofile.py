@@ -49,6 +49,9 @@ def set_previd(mr, prev_id):
 	mr["prev_id"] = prev_id
 	return
 
+def get_trace(st):
+	return st["stack_trace"]
+
 class MProfile:
 	#
 	# correct memory operations come in pairs
@@ -68,9 +71,9 @@ class MProfile:
 		def create_filter_f(mr_r):
 			def matches_alloc(mr_a, mr_w):
 				return get_addr(mr_a) == get_addr(mr_w) and \
-				    mr_a["prev_id"] == 0 and is_free(mr_a) or \
+				    get_previd(mr_a) == 0 and is_free(mr_a) or \
 				    get_realloc(mr_a) == get_addr(mr_w) and \
-				    mr_a["prev_id"] == 0 and is_realloc(mr_a)
+				    get_previd(mr_a) == 0 and is_realloc(mr_a)
 
 			return lambda mr_a: True if matches_alloc(mr_a, mr_r) \
 			    else False
@@ -86,15 +89,14 @@ class MProfile:
 			if (len(release_ops) > 0):
 				r_op = release_ops[0]
 				set_nextid(mr, get_id(r_op))
-				r_op["prev_id"] = get_id(mr)
 				set_previd(r_op, get_id(mr))
 			else:
 				self._leaks.append(mr)
 
 	def __get_chain(self, mr):
 		chain = []
-		while mr["next_id"] != 0:
-			mr = self.get_mr(mr["next_id"])
+		while get_nextid(mr) != 0:
+			mr = self.get_mr(get_nextid(mr))
 			chain.append(mr)
 		return chain
 
@@ -114,7 +116,7 @@ class MProfile:
 
 	def alloc_failures(self):
 		return filter(
-		    lambda x: True if is_aloc(x) and get_addr(x) == 0
+		    lambda x: True if is_alloc(x) and get_addr(x) == 0
 			else False,
 		    self._mem_records)
 
@@ -157,21 +159,33 @@ class MProfile:
 	def get_stack(self, mr):
 		if mr == None or get_stackid(mr) == 0:
 			return None
-		return self._stacks[get_stackid(mr) - 1]["stack_trace"]
+		return get_trace(self._stacks[get_stackid(mr) - 1])
+
+	def get_next(self, mp):
+		if get_nextid(mp) != 0:
+			return self.get_mr(get_nextid(mp))
+		else:
+			return None
+
+	def get_prev(self, mp):
+		if get_previd(mp) != 0:
+			return self.get_mr(get_previd(mp))
+		else:
+			return None
 
 	def get_size(self, mr):
 		if is_alloc(mr):
 			return get_rsize(mr)
 		if is_free(mr):
-			if mr["prev_id"] != 0:
-				mr = self.get_mr(mr["prev_id"])
-				return get_rsize(mr) * (-1)
+			prev = self.get_prev(mr)
+			if prev != None:
+				return get_rsize(prev) * (-1)
 			else:
 				return 0
 		if is_realloc(mr):
-			if mr["prev_id"] != 0:
-				mr_p = self.get_mr(mr["prev_id"])
-				return get_rsize(mr) - get_rsize(mr_p)
+			prev = self.get_prev(mr)
+			if prev != None:
+				return get_rsize(mr) - get_rsize(prev)
 			else:
 				return get_rsize(mr)
 		else:
@@ -199,8 +213,8 @@ if __name__ == "__main__":
 
 	for ma in mp.alloc_ops():
 		print("allocated {0} [{1}]".format(get_rsize(ma), get_id(ma)), end='')
-		while ma["next_id"] != 0:
-			ma = mp.get_mr(ma["next_id"])
+		while get_nextid(ma) != 0:
+			ma = mp.get_mr(get_nextid(ma))
 			print("  -> {0} [{1}]  {2}".format(get_operation(ma), get_id(ma), mp.get_size(ma)), end='')
 		print("\n")
 
