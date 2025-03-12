@@ -3,8 +3,22 @@
 <html>
 
 <head>
+<style>
+    .code { font-family: monospace }
+    .leak-trace-full { display: none }
+</style>
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 <script>
+    function toggle(element_id)
+    {
+	var trace = document.querySelector("#" + element_id);
+	if (trace.style.display == 'none') {
+	    trace.style.display = 'block';
+	} else {
+	    trace.style.display = 'none';
+	}
+    }
+
     document.addEventListener("DOMContentLoaded", function(){
 	var chart_opts = {
 	    chart: { 
@@ -34,29 +48,34 @@
 <body>
     <h1>{{ title }}</h1>
     <div id="chart"></div>
+    <div id="stack-trace"></div>
 
-    <p>
-    {{ mp.get_total_mem() }} bytes of memory allocated in {{ mp.get_total_allocs() }} operations.
-    </p>
-{% for leak in mp.leaks() %}
-{% if loop.first %}
-    <div id="leaks">
-	<h1>{%- if leak_count == 1 -%} Leak found {%- else -%} {{ leak_count }} Leasks found {%- endif -%}, {{ lost_bytes }} B  got lost </h2>
+    <div id="summary">
 	<p>
-	<ul>
-{% endif %}
-	    <li>Leak {{ loop.index }} is {{ mp.get_leak_sz(leak) }} bytes long.
-		<ul>{% for op in mp.get_chain(leak) %}
-		    <li>{{ MR(op).get_operation() }}({{ MR(op).get_rsize() }}) at {{ mp.get_time(op) }}</li>
-		    {% endfor %}
-		</ul>
-{% if loop.last %}
-	</ul>
+	    {{ mp.get_total_mem() }} bytes of memory allocated in {{ mp.get_total_allocs() }} operations.
 	</p>
-    </div><!--- "leaks" --->
-{% endif %}
-{% endfor %}
-</div>
+	{% for leak in mp.leaks() %}
+	<div id="leaks">
+	    {% if loop.first %}
+	    <h1>{%- if leak_count == 1 -%} Leak found {%- else -%} {{ leak_count }} Leasks found {%- endif -%}, {{ lost_bytes }} B  got lost </h1>
+            {% endif %}
+		<h2>Leak {{ loop.index }} is {{ mp.get_leak_sz(leak) }} bytes long. </h2>
+		<ul>{% for op in mp.get_chain(leak) %}
+		    <li class="leak-trace-button" id="leak-{{ leak.id }}-{{ op.id }}" onclick="toggle('show-leak-{{ leak.id }}-{{ op.id }}')">
+			<div class="leak-trace" id="ref-leak-{{ leak.id }}-{{ op.id }}">
+			    <div class="code">{{ MR(op).get_operation() }}({{ MR(op).get_rsize() }}) at {{ mp.get_time(op) }}</div>
+			</div>
+			<div class="leak-trace-full" id="show-leak-{{ leak.id }}-{{ op.id }}">
+			    <ul>{% for frame in mp.get_stack(op) %}
+				<li><div class="code">{{ frame }}</div></li>
+				{% endfor %}
+			    </ul>
+			</div>
+			{% endfor %}
+		    </li>
+		</ul>
+	</div><!--- "leaks" --->
+	{% endfor %}
+    </div><!--- "summary" --->
 </body>
-
 </html>

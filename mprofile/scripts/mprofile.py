@@ -61,7 +61,11 @@ def set_previd(mr, prev_id):
 	return
 
 def get_trace(st):
-	return st["stack_trace"]
+	#
+	# need to do slice. the json data we got from mprofile.so always
+	# contains empty string there.
+	#
+	return st["stack_trace"][:-1]
 
 def time_to_float(tr):
 	return float(tr["s"]) + float(tr["ns"]/1000000000)
