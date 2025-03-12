@@ -55,6 +55,8 @@ static struct syms *syms = NULL;
 /* TODO: must be atomic when going multithreaded */
 static uint64_t mpr_id = 1;
 
+static struct timespec start_time_tv;
+
 static struct mprofile_record *
 create_mprofile_record(void)
 {
@@ -112,6 +114,9 @@ mprofile_create(void)
 {
 	mprofile_t *mp;
 
+	if (start_time_tv.tv_sec == 0)
+		clock_gettime(CLOCK_REALTIME, &start_time_tv);
+
 	mp = (mprofile_t *) malloc(sizeof (mprofile_t));
 	if (mp == NULL)
 		return (NULL);
@@ -167,7 +172,13 @@ mprofile_save(mprofile_t *mp)
 	if (f == NULL)
 		return;
 
-	fprintf(f, "{ \"allocations\" : [\n");
+	
+	fprintf(f, "{ \"start_time\" : {\n");
+	fprintf(f, "\t%s : %lld,\n", MPROFILE_TIME_S,
+	    (long long)start_time_tv.tv_sec);
+	fprintf(f, "\t%s : %lu\n", MPROFILE_TIME_NS, start_time_tv.tv_nsec);
+	fprintf(f, "  },\n");
+	fprintf(f, "  \"allocations\" : [\n");
 	TAILQ_FOREACH(mpr, &mp->mp_tqhead, mpr_tqe) {
 		if (first == 0)
 			fprintf(f, "\t},\n");
