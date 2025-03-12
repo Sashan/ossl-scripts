@@ -1,0 +1,10 @@
+{% for leak in mp.leaks() %}
+   Leak {{ loop.index }} is {{ mp.get_leak_sz(leak) }} bytes long.
+   {% for op in mp.get_chain(leak) -%}
+      {% if loop.index == 1 -%}
+         {{ MR(op).get_operation() }}({{ MR(op).get_rsize() }})    
+      {%- else -%}
+          -> {{ MR(op).get_operation() }}({{ MR(op).get_rsize() }}) 
+      {%- endif -%}
+   {% endfor %}
+{% endfor %}

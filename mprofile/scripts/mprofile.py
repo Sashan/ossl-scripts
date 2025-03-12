@@ -63,6 +63,41 @@ def set_previd(mr, prev_id):
 def get_trace(st):
 	return st["stack_trace"]
 
+#
+# this is a class wrapper around mr dictionary for ninja template to separate
+# templates from eventual changes on json done in.so
+#
+class MR:
+	def __init__(self, mr):
+		self._mr = mr
+
+	def is_realloc(self):
+		return is_realloc(self._mp)
+
+	def is_alloc(self):
+		return is_alloc(self._mr)
+
+	def is_free(self):
+		return is_free(self._mr)
+
+	def get_addr(self):
+		return get_addr(self._mr)
+
+	def get_realloc(self):
+		return get_realloc(self._mr)
+
+	def get_rsize(self):
+		return get_rsize(self._mr)
+
+	def get_id(self):
+		return get_id(self._mr)
+
+	def get_rsize(self):
+		return get_rsize(self._mr)
+
+	def get_operation(self):
+		return get_operation(self._mr)
+
 class MProfile:
 	#
 	# traverse allocation chain back to the first operation
@@ -141,10 +176,11 @@ class MProfile:
 	#
 	# retrieve a record chain for allocation record ar.
 	#
-	def __get_chain(self, ar):
+	def get_chain(self, ar):
 		chain = []
+		chain.append(ar)
 		while get_nextid(ar) != 0:
-			mr = self.get_mr(get_nextid(ar))
+			ar = self.get_mr(get_nextid(ar))
 			chain.append(ar)
 		return chain
 
@@ -253,18 +289,18 @@ class MProfile:
 	#
 	# get next link in memory lifecycle chain
 	#
-	def get_next(self, mp):
-		if get_nextid(mp) != 0:
-			return self.get_mr(get_nextid(mp))
+	def get_next(self, mr):
+		if get_nextid(mr) != 0:
+			return self.get_mr(get_nextid(mr))
 		else:
 			return None
 
 	#
 	# get previous link in memory lifecycle chain
 	#
-	def get_prev(self, mp):
-		if get_previd(mp) != 0:
-			return self.get_mr(get_previd(mp))
+	def get_prev(self, mr):
+		if get_previd(mr) != 0:
+			return self.get_mr(get_previd(mr))
 		else:
 			return None
 
@@ -297,11 +333,11 @@ class MProfile:
 	#
 	def get_total_mem(self):
 		# summary of all memory allocated by malloc()
-		alloc_sz = sum(map(lambda x: get_rsize(x), mp.alloc_ops()))
+		alloc_sz = sum(map(lambda mr: get_rsize(mr), self.alloc_ops()))
 		# summary of all memory allocated via realloc, we deliberately
 		# ignore memory freed by realloc (rsize < 0)
-		alloc_sz = alloc_sz + sum(map(lambda x: 0 if get_rsize(x) < 0 \
-		    else get_rsize(x), mp.realloc_ops()))
+		alloc_sz = alloc_sz + sum(map(lambda mr: 0 if get_rsize(mr) < 0 \
+		    else get_rsize(mr), self.realloc_ops()))
 		return alloc_sz
 
 	#
@@ -310,10 +346,10 @@ class MProfile:
 	#
 	def get_total_allocs(self):
 		# all allocations
-		ops = len(list(mp.alloc_ops()))
+		ops = len(list(self.alloc_ops()))
 		# only those reallocs which got memory (rsize > 0)
 		ops = ops + sum(map(
-		    lambda x: 1 if get_rsize(x) > 0 else 0, mp.realloc_ops()))
+		    lambda mr: 1 if get_rsize(mr) > 0 else 0, self.realloc_ops()))
 		return ops
 
 def create_parser():
@@ -339,22 +375,14 @@ def report_leaks(mp, parser_args):
 	    sum(map(lambda x: mp.get_leak_sz(x), leaks)), len(leaks)))
 
 	if parser_args.verbose:
-#		e = Environment(loader = FileSystemLoader("templates/"))
-#		t = e.get_template("leaks.txt")
-		i = 1
-		for l_mr in mp.leaks():
-			print("Leak {0}:".format(i))
-			i = i + 1
-			print("\t{0} bytes".format(mp.get_leak_sz(l_mr)))
-			print("\t{0}({1}) bytes".format(get_operation(l_mr),
-			    get_rsize(l_mr)), end='')
-			l_mr = mp.get_next(l_mr)
-			while l_mr != None:
-				print("-> {0}({1}) bytes".format(
-				    get_operation(l_mr),
-				    get_rsize(l_mr)), end='')
-				l_mr = mp.get_next(l_mr)
-			print("\n------------")
+		e = Environment(loader = FileSystemLoader("templates/"))
+		t = e.get_template("leaks.txt")
+		context = {
+			"MR" : MR,
+			"mp" : mp 
+		}
+		output = t.render(context)
+		print(output)
 	return
 
 def report_mem_total(mp, parser_args):
