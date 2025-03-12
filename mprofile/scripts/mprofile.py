@@ -63,6 +63,12 @@ def set_previd(mr, prev_id):
 def get_trace(st):
 	return st["stack_trace"]
 
+def time_to_float(tr):
+	return float(tr["s"]) + float(tr["ns"]/1000000000)
+
+def get_timef(mr):
+	return time_to_float(mr["time"])
+
 #
 # this is a class wrapper around mr dictionary for ninja template to separate
 # templates from eventual changes on json done in.so
@@ -207,6 +213,7 @@ class MProfile:
 		#
 		self._stacks.sort(key = lambda x : x["id"])
 		self.__create_chains()
+		self._start_time = time_to_float(json_data["start_time"])
 
 	#
 	# count allocation failures
@@ -352,6 +359,28 @@ class MProfile:
 		    lambda mr: 1 if get_rsize(mr) > 0 else 0, self.realloc_ops()))
 		return ops
 
+	#
+	# returns a memory profile which is list of memory allocated
+	# at exact point of application lifetime
+	#
+	def get_profile(self):
+		memory_now = 0
+		profile = [ memory_now ]
+		for mr in self._mem_records:
+			memory_now = memory_now + self.get_size(mr)
+			profile.append(memory_now)
+		return profile
+
+	def get_time_axis(self):
+		time_axis = [ float(0) ]
+		for mr in self._mem_records:
+			t = (get_timef(mr) - self._start_time) * 1000000
+			time_axis.append(t)
+		return time_axis
+
+	def get_time(self, mr):
+		return (get_timef(mr) - self._start_time) * 1000000
+
 def create_parser():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("json_file",
@@ -362,6 +391,10 @@ def create_parser():
 	    action = "store_true")
 	parser.add_argument("-a", "--allocated", help = "report all memory allocated",
 	    action = "store_true")
+	parser.add_argument("-o", "--output", help = "write report to html",
+	    nargs = 1)
+	parser.add_argument("-t", "--title", help = "report title",
+	    default = "Memory Profile")
 
 	return parser
 
@@ -390,6 +423,19 @@ def report_mem_total(mp, parser_args):
 	    mp.get_total_mem(), mp.get_total_allocs()))
 	return
 
+def report_to_html(mp, parser_args):
+	e = Environment(loader = FileSystemLoader("templates/"))
+	t = e.get_template("mprofile.html")
+	context = {
+		"title" : parser_args.title,
+		"mp" : mp,
+		"MR" : MR,
+		"leak_count" : len(mp.leaks()),
+		"lost_bytes" : sum(map(lambda x: mp.get_leak_sz(x), mp.leaks()))
+	}
+	f = open(parser_args.output[0], mode = "w", encoding = "utf-8")
+	f.write(t.render(context))
+	f.close()
 
 if __name__ == "__main__":
 	parser = create_parser()
@@ -401,9 +447,12 @@ if __name__ == "__main__":
 
 	mp = MProfile(j)
 
-	if args.allocated:
-		report_mem_total(mp, args)
+	if args.output:
+		report_to_html(mp, args)
+	else:
+		if args.allocated:
+			report_mem_total(mp, args)
 
-	if args.leaks:
-		report_leaks(mp, args)
+		if args.leaks:
+			report_leaks(mp, args)
 
