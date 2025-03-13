@@ -73,6 +73,12 @@ def time_to_float(tr):
 def get_timef(mr):
 	return time_to_float(mr["time"])
 
+def set_mem_current(mr, msize):
+	mr["mem_current"] = msize 
+
+def get_mem_current(mr):
+	return mr["mem_current"]
+
 #
 # this is a class wrapper around mr dictionary for ninja template to separate
 # templates from eventual changes on json done in.so
@@ -183,6 +189,15 @@ class MProfile:
 				#
 				self.__add_leak(mr)
 
+	def __create_profile(self):
+		mem_total = 0
+		for mr in self._mem_records:
+			mem_total = mem_total + get_rsize(mr)
+			set_mem_current(mr, mem_total)
+			if mem_total < 0:
+				self._double_free.append(mr)
+				mem_total = 0
+
 	#
 	# retrieve a record chain for allocation record ar.
 	#
@@ -210,14 +225,16 @@ class MProfile:
 		for mr in self._mem_records:
 			set_previd(mr, 0)
 			set_nextid(mr, 0)
+			set_mem_current(mr, 0)
 		self._stacks = json_data["stacks"]
 		#
 		# call stacks in json data are dump of RB-tree,
 		# we need to sort the array/list by 'id'
 		#
 		self._stacks.sort(key = lambda x : x["id"])
-		self.__create_chains()
 		self._start_time = time_to_float(json_data["start_time"])
+		self.__create_chains()
+		self.__create_profile()
 
 	#
 	# count allocation failures
@@ -388,6 +405,9 @@ class MProfile:
 	def get_time(self, mr):
 		return (get_timef(mr) - self._start_time) * 1000000
 
+	def get_mem_peak(self):
+		return max(self._mem_records,
+		    key = lambda k : get_mem_current(k))	
 def create_parser():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("json_file",
@@ -402,6 +422,8 @@ def create_parser():
 	    nargs = 1)
 	parser.add_argument("-t", "--title", help = "report title",
 	    default = "Memory Profile")
+	parser.add_argument("-m", "--max", help = "report max mem usage",
+	    action = "store_true")
 
 	return parser
 
@@ -463,3 +485,5 @@ if __name__ == "__main__":
 		if args.leaks:
 			report_leaks(mp, args)
 
+		if args.max:
+			print(get_mem_current(mp.get_mem_peak()))
