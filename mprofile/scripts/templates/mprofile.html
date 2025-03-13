@@ -6,9 +6,15 @@
 <style>
     .code { font-family: monospace }
     .leak-trace-full { display: none }
+    .mem-trace { display: none }
+    #chart { float: none }
+    #mem-traces { float: right; padding-left: 80px; width: 300px }
+    #summary { float: none}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 <script>
+    var selected_stack = null;
+
     function toggle(element_id)
     {
 	var trace = document.querySelector("#" + element_id);
@@ -19,12 +25,26 @@
 	}
     }
 
+    function select_stack(event, chartContext, opts)
+    {
+	var stack = document.querySelector("#" + "mem-trace-" + opts.dataPointIndex);
+        if (stack) {
+	    if (selected_stack != null)
+                selected_stack.style.display = 'none'
+            stack.style.display = 'block'
+	    selected_stack = stack;
+        }
+    }
+
     document.addEventListener("DOMContentLoaded", function(){
 	var chart_opts = {
 	    chart: { 
 		height: 450,
 		width: 900,
-		type: 'line'
+		type: 'line',
+		events: {
+		    dataPointSelection: select_stack
+		}
 	    },
 	    series: [{
 		name: 'Memory Profile',
@@ -35,6 +55,13 @@
 		title: {
 		    text: 'Elapsed time in uSecs'
 		}
+	    },
+	    tooltip: {
+		intersect: true,
+		shared: false
+	    },
+	    markers: {
+		size: 3
 	    }
 	}
 
@@ -47,8 +74,20 @@
 
 <body>
     <h1>{{ title }}</h1>
-    <div id="chart"></div>
-    <div id="stack-trace"></div>
+    <div id="top">
+	<div id="mem-traces">
+	    <div class="mem-trace" id="mem-trace-0"></div><!--- fake record at time 0 --->
+	    {% for op in mp.get_ops() %}
+	    <div class="mem-trace" id="mem-trace-{{ loop.index }}">
+		<ul>{% for frame in mp.get_stack(op) %}
+		    <li><span class="code">{{ frame }}</span></li>
+		{% endfor %}
+		</ul>
+	    </div>
+	    {% endfor %}
+	</div>
+	<div id="chart"></div>
+    </div>
 
     <div id="summary">
 	<p>

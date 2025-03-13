@@ -375,6 +375,9 @@ class MProfile:
 			profile.append(memory_now)
 		return profile
 
+	def get_ops(self):
+		return self._mem_records
+
 	def get_time_axis(self):
 		time_axis = [ float(0) ]
 		for mr in self._mem_records:
