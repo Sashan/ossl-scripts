@@ -13,8 +13,15 @@
 </style>
 <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
 <script>
+    {#
+    remembers stack selected in apex chart so we can hide it
+    when user clicks on another point in chart.
+    #}
     var selected_stack = null;
 
+    {#
+    shows/hides detailed stack for memory leak.
+    #}
     function toggle(element_id)
     {
 	var trace = document.querySelector("#" + element_id);
@@ -25,6 +32,10 @@
 	}
     }
 
+    {#
+    select_stack shows/hides a stack trace for selected operation
+    in apex chart.
+    #}
     function select_stack(event, chartContext, opts)
     {
 	var stack = document.querySelector("#" + "mem-trace-" + opts.dataPointIndex);
@@ -36,6 +47,13 @@
         }
     }
 
+    {#
+    this initializes apex chart. it is based on tutorial
+    here:
+	https://www.explo.co/chart-library-tutorials/apexcharts-javascript-tutorial
+    the referene documentaton for apex charts is here:
+	https://www.apexcharts.com/docs
+    #}
     document.addEventListener("DOMContentLoaded", function(){
 	var chart_opts = {
 	    chart: { 
@@ -43,7 +61,7 @@
 		width: 900,
 		type: 'line',
 		events: {
-		    dataPointSelection: select_stack
+		    dataPointSelection: select_stack {# add a slect_stack() callback #}
 		}
 	    },
 	    series: [{
@@ -57,11 +75,16 @@
 		}
 	    },
 	    tooltip: {
+		{#
+		we need to set these to get callback working, see 
+		https://www.apexcharts.com/docs/options/chart/events/
+		search for dataPointSelection
+		#}
 		intersect: true,
 		shared: false
 	    },
 	    markers: {
-		size: 1
+		size: 1 {# size must be at least 1, to make dataPointSelection wokring. selecting 3 mkes chart rendering to fail ?bug? #}
 	    }
 	}
 
@@ -75,10 +98,24 @@
 <body>
     <h1>{{ title }}</h1>
     <div id="top">
+	{#
+	div here contains stack traces for all memory operations.
+	each stack trace is shown after user clicks/selects data
+	point in chart.
+	#}
 	<div id="mem-traces">
-	    <div class="mem-trace" id="mem-trace-0"></div><!--- fake record at time 0 --->
+	    {#
+	    Need to add empty stack trace for point zero (start of application
+	    #}
+	    <div class="mem-trace" id="mem-trace-0"></div>
 	    {% for op in mp.all_ops() %}
+	    {#
+	    stack trace is identified by mem-trace-xx, so javascript
+	    can easily select what to show/hide. the loop.index counts
+	    from 1.
+	    #}
 	    <div class="mem-trace" id="mem-trace-{{ loop.index }}">
+		<p>Stack time {{ mp.get_time(op) }} us since start</p>
 		<ul>{% for frame in mp.get_stack(op) %}
 		    <li><div class="code">{{ frame }}</div></li>
 		{% endfor %}
@@ -86,13 +123,24 @@
 	    </div>
 	    {% endfor %}
 	</div>
+	{#
+	in div element here we render chart.
+	#}
 	<div id="chart"></div>
     </div>
 
     <div id="summary">
+	{#
+	div/section here comes with summary. we have just total number of allocations,
+	by default. We can add some more like elapsed time average allocation for
+	each operation etc.
+	#}
 	<p>
 	    {{ mp.get_total_mem() }} bytes of memory allocated in {{ mp.get_total_allocs() }} operations.
 	</p>
+	{#
+	section leaks is present only when memory leaks are detected.
+	#}
 	{% for leak in mp.leaks() %}
 	<div id="leaks">
 	    {% if loop.first %}
