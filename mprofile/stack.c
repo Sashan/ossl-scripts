@@ -42,6 +42,9 @@ stack_compare(mprofile_stack_t *a_mps, mprofile_stack_t *b_mps)
 	    (i < b_mps->mps_stack_depth))
 		i++;
 
+	if (i == b_mps->mps_stack_depth)
+		i--;
+
 	if (a_mps->mps_stack[i] < b_mps->mps_stack[i])
 		return (-1);
 	else if (a_mps->mps_stack[i] > b_mps->mps_stack[i])
