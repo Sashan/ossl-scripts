@@ -77,10 +77,10 @@
     <div id="top">
 	<div id="mem-traces">
 	    <div class="mem-trace" id="mem-trace-0"></div><!--- fake record at time 0 --->
-	    {% for op in mp.get_ops() %}
+	    {% for st in mp.get_stacks() %}
 	    <div class="mem-trace" id="mem-trace-{{ loop.index }}">
-		<ul>{% for frame in mp.get_stack(op) %}
-		    <li><span class="code">{{ frame }}</span></li>
+		<ul>{% for frame in mp.get_frames(st) %}
+		    <li><div class="code">{{ frame }}</div></li>
 		{% endfor %}
 		</ul>
 	    </div>

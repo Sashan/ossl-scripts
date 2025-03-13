@@ -375,8 +375,11 @@ class MProfile:
 			profile.append(memory_now)
 		return profile
 
-	def get_ops(self):
-		return self._mem_records
+	def get_stacks(self):
+		return self._stacks
+
+	def get_frames(self, st):
+		return get_trace(st)
 
 	def get_time_axis(self):
 		time_axis = [ float(0) ]
