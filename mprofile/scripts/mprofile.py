@@ -279,6 +279,9 @@ class MProfile:
 			else False,
 		    self._mem_records)
 
+	def all_ops(self):
+		return self._mem_records
+
 	#
 	# get memory record for given id. returns None when
 	# id not found
@@ -374,12 +377,6 @@ class MProfile:
 			memory_now = memory_now + self.get_size(mr)
 			profile.append(memory_now)
 		return profile
-
-	def get_stacks(self):
-		return self._stacks
-
-	def get_frames(self, st):
-		return get_trace(st)
 
 	def get_time_axis(self):
 		time_axis = [ float(0) ]

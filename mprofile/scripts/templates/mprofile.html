@@ -61,7 +61,7 @@
 		shared: false
 	    },
 	    markers: {
-		size: 3
+		size: 1
 	    }
 	}
 
@@ -77,9 +77,9 @@
     <div id="top">
 	<div id="mem-traces">
 	    <div class="mem-trace" id="mem-trace-0"></div><!--- fake record at time 0 --->
-	    {% for st in mp.get_stacks() %}
+	    {% for op in mp.all_ops() %}
 	    <div class="mem-trace" id="mem-trace-{{ loop.index }}">
-		<ul>{% for frame in mp.get_frames(st) %}
+		<ul>{% for frame in mp.get_stack(op) %}
 		    <li><div class="code">{{ frame }}</div></li>
 		{% endfor %}
 		</ul>
