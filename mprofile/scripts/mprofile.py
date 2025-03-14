@@ -171,7 +171,6 @@ class MProfile:
 		for mr in self._mem_records:
 			if is_alloc(mr):
 				mem_current = mem_current + get_rsize(mr)
-				#print("[{0}] = {1} ({2})".format(get_id(mr), get_rsize(mr), mem_current))
 				set_mem_current(mr, mem_current)
 				index = index + 1
 				continue # skip free operations
@@ -188,12 +187,9 @@ class MProfile:
 
 			delta = get_rsize(mr) - get_rsize(alloc_mr)
 
-			#print("\t{0}([{1}], {2}) <- [{3}] {4}".format(get_operation(mr), get_id(alloc_mr), get_rsize(mr), get_id(mr), delta))
 			set_rsize(mr, get_rsize(alloc_mr) + delta)
-			#print("\t\t{0}".format(get_rsize(mr)))
 
 			set_mem_current(mr, mem_current + delta)
-			#print("\t\t{0}".format(mem_current + delta))
 			if get_mem_current(mr) < 0:
 				mem_current = 0 # ? double free ?
 			else:
@@ -410,11 +406,8 @@ class MProfile:
 	# at exact point of application lifetime
 	#
 	def get_profile(self):
-		memory_now = 0
-		profile = [ memory_now ]
-		for mr in self._mem_records:
-			memory_now = memory_now + self.get_size(mr)
-			profile.append(memory_now)
+		profile = [ 0 ] + \
+		    list(map(lambda mr: get_mem_current(mr), self._mem_records))
 		return profile
 
 	def get_time_axis(self):
