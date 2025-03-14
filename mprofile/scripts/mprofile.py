@@ -31,6 +31,9 @@ def get_realloc(mr):
 def get_rsize(mr):
 	return mr["rsize"]
 
+def set_rsize(mr, rsize):
+	mr["rsize"] = rsize
+
 def get_id(mr):
 	return mr["id"]
 
@@ -78,6 +81,12 @@ def set_mem_current(mr, msize):
 
 def get_mem_current(mr):
 	return mr["mem_current"]
+
+def get_addr_search(mr):
+	if is_realloc(mr):
+		return get_realloc(mr)
+	else:
+		return get_addr(mr)
 
 #
 # this is a class wrapper around mr dictionary for ninja template to separate
@@ -143,60 +152,57 @@ class MProfile:
 	# from records kept _mem_records list.
 	#
 	def __create_chains(self):
-		#
-		# create a filter function to find all operations
-		# which belong to particular chain. The mr_a is
-		# memory record which allocates the buffer. Function
-		# helps us to find all remaining operations on address
-		# kept in mr_a record.
-		#
-		# mr_w is the address which comes from list of all memory
-		# operations where we search for or desired chain links.
-		# mr_a holds a record which tracks allocation of a buffer
-		#
-		def create_chain_filter_f(mr_a):
-			def matches_alloc(mr_w, mr_a):
-				return get_addr(mr_a) == get_addr(mr_w) and \
-				    get_previd(mr_w) == 0 and is_free(mr_w) or \
-				    get_realloc(mr_w) == get_addr(mr_a) and \
-				    get_previd(mr_w) == 0 and is_realloc(mr_w)
+		def find_matching_alloc(mr, mrecords):
+			#
+			# search _mem_records from start to current position
+			#
+			mrecords.reverse()
+			match_index = list(map(lambda mr : get_addr(mr),
+			    mrecords)).index(get_addr_search(mr))
+			found = mrecords[match_index]
+			if get_nextid(found) != 0 or is_free(found):
+				print("Bad allocation chain")
+				print(found)
+				found = None
+			return found
 
-			return lambda mr_w: True if matches_alloc(mr_w, mr_a) \
-			    else False
-
-		index = 1
+		mem_current = 0
+		index = 0
 		for mr in self._mem_records:
-			if is_free(mr):
+			if is_alloc(mr):
+				mem_current = mem_current + get_rsize(mr)
+				#print("[{0}] = {1} ({2})".format(get_id(mr), get_rsize(mr), mem_current))
+				set_mem_current(mr, mem_current)
+				index = index + 1
 				continue # skip free operations
-			#
-			# the search starts at memory record
-			# which follows mr mem_records holds
-			# a temporal list where we are searching
-			# for chain links.
-			#
-			index = index + 1
-			mem_records = list(self._mem_records)[index:]
-			chain_filter_f = create_chain_filter_f(mr)
-			release_ops = list(filter(chain_filter_f, mem_records))
-			if (len(release_ops) > 0):
-				r_op = release_ops[0]
-				set_nextid(mr, get_id(r_op))
-				set_previd(r_op, get_id(mr))
-			else:
-				#
-				# there is no free operation in chain,
-				# so it is a memory leak then.
-				#
-				self.__add_leak(mr)
 
+			if is_free(mr) and get_addr(mr) == 0:
+				index = index + 1 # happens pn free(NULL)
+				continue
+
+			alloc_mr = find_matching_alloc(mr,
+			    self._mem_records[0:index])
+			alloc_mr = self.get_mr(get_id(alloc_mr))
+			set_nextid(alloc_mr, get_id(mr))
+			set_previd(mr, get_id(alloc_mr))
+
+			delta = get_rsize(mr) - get_rsize(alloc_mr)
+
+			#print("\t{0}([{1}], {2}) <- [{3}] {4}".format(get_operation(mr), get_id(alloc_mr), get_rsize(mr), get_id(mr), delta))
+			set_rsize(mr, get_rsize(alloc_mr) + delta)
+			#print("\t\t{0}".format(get_rsize(mr)))
+
+			set_mem_current(mr, mem_current + delta)
+			#print("\t\t{0}".format(mem_current + delta))
+			if get_mem_current(mr) < 0:
+				mem_current = 0 # ? double free ?
+			else:
+				mem_current = get_mem_current(mr)
+			index = index + 1
+
+				
 	def __create_profile(self):
-		mem_total = 0
-		for mr in self._mem_records:
-			mem_total = mem_total + get_rsize(mr)
-			set_mem_current(mr, mem_total)
-			if mem_total < 0:
-				self._double_free.append(mr)
-				mem_total = 0
+		return list(map(get_mem_current, self._mem_records))
 
 	#
 	# retrieve a record chain for allocation record ar.
@@ -216,7 +222,7 @@ class MProfile:
 	#	stacks list of stack traces
 	#
 	def __init__(self, json_data):
-		self._leaks = []
+		self._leaks = None
 		self._mem_records = json_data["allocations"]
 		#
 		# jjosn data come with no chain links. we just
@@ -235,6 +241,7 @@ class MProfile:
 		self._start_time = time_to_float(json_data["start_time"])
 		self.__create_chains()
 		self.__create_profile()
+		x = self._mem_records
 
 	#
 	# count allocation failures
@@ -253,10 +260,25 @@ class MProfile:
 		    lambda x: True if is_realloc(x) and get_addr(x) == 0 and \
 			get_size(x) > 0 else False, self._mem_records)
 
+	def is_leak(self, mr):
+		if not is_alloc(mr):
+			return False
+
+		next_mr = self.get_mr(get_nextid(mr))
+		while next_mr != None:
+			mr = next_mr
+			next_mr = self.get_mr(get_nextid(mr))
+
+		return get_rsize(mr) != 0
+
 	#
 	# return list of memory leaks
 	#
 	def leaks(self):
+		if self._leaks == None:
+			leaks = filter(self.is_leak, self._mem_records)
+			self._leaks = list(leaks)
+
 		return self._leaks
 
 	#
