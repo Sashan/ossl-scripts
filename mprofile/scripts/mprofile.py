@@ -237,7 +237,7 @@ class MProfile:
 		self._start_time = time_to_float(json_data["start_time"])
 		self.__create_chains()
 		self.__create_profile()
-		x = self._mem_records
+		self._samples = None
 
 	#
 	# count allocation failures
@@ -315,7 +315,10 @@ class MProfile:
 		    self._mem_records)
 
 	def all_ops(self):
-		return self._mem_records
+		if self._samples != None:
+			return self._samples
+		else:
+			return self._mem_records
 
 	#
 	# get memory record for given id. returns None when
@@ -406,16 +409,28 @@ class MProfile:
 	# at exact point of application lifetime
 	#
 	def get_profile(self):
-		profile = [ 0 ] + \
-		    list(map(lambda mr: get_mem_current(mr), self._mem_records))
-		return profile
+		mem_records = None
+		if self._samples == None:
+			mem_records = self._mem_records
+		else:
+			mem_records = self._samples
+
+		return [ 0 ] + \
+		    list(map(lambda mr: get_mem_current(mr), mem_records))
+
 
 	def get_time_axis(self):
-		time_axis = [ float(0) ]
-		for mr in self._mem_records:
-			t = (get_timef(mr) - self._start_time) * 1000000
-			time_axis.append(t)
-		return time_axis
+		t = [ float(0) ]
+		mem_records = None
+		if self._samples == None:
+			mem_records = self._mem_records
+		else:
+			mem_records = self._samples
+
+		for mr in mem_records:
+			t.append((get_timef(mr) - self._start_time) * 1000000)
+
+		return t
 
 	def get_time(self, mr):
 		return (get_timef(mr) - self._start_time) * 1000000
@@ -423,6 +438,15 @@ class MProfile:
 	def get_mem_peak(self):
 		return max(self._mem_records,
 		    key = lambda k : get_mem_current(k))	
+
+	def samples(self, samples_count):
+		slice_size = int(len(self._mem_records)/samples_count)
+		mem_slices = [ self._mem_records[i : i + slice_size ]
+		    for i in range(0, len(self._mem_records), slice_size) ]
+		self._samples = list(map(
+		    lambda x: max(x, key = lambda k : get_mem_current(k)),
+		    mem_slices))
+
 def create_parser():
 	parser = argparse.ArgumentParser()
 	parser.add_argument("json_file",
@@ -439,6 +463,9 @@ def create_parser():
 	    default = "Memory Profile")
 	parser.add_argument("-m", "--max", help = "report max mem usage",
 	    action = "store_true")
+	parser.add_argument("-r", "--samples",
+	    help = "reduce the set of events for html output",
+	    default = "0")
 
 	return parser
 
@@ -470,6 +497,10 @@ def report_mem_total(mp, parser_args):
 def report_to_html(mp, parser_args):
 	e = Environment(loader = FileSystemLoader("templates/"))
 	t = e.get_template("mprofile.html")
+
+	if (int(args.samples) > 0):
+		mp.samples(int(args.samples))
+
 	context = {
 		"title" : parser_args.title,
 		"mp" : mp,
