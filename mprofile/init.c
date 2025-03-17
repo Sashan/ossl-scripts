@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <pthread.h>
 #include <openssl/crypto.h>
 
 #include "mprofile.h"
@@ -7,17 +8,37 @@ static void *mp_CRYPTO_malloc(size_t, const char *, int);
 static void mp_CRYPTO_free(void *, const char *, int);
 static void *mp_CRYPTO_realloc(void *, size_t, const char *, int);
 
-mprofile_t	*mp = NULL;	/* profile should be per thread */
+static pthread_key_t mp_pthrd_key;
 
 static void __attribute__ ((constructor)) init(void);
 
 static void
+merge_profile(void *void_mprof)
+{
+	mprofile_t	*mp = (mprofile_t *)void_mprof;
+
+	mprofile_save(mp);
+	pthread_setspecific(mp_pthrd_key, NULL);
+}
+
+static void
 save_profile(void)
 {
-	mprofile_load_syms(mp);
-	mprofile_save(mp);
-	mprofile_destroy(mp);
+	mprofile_merge();
 	mprofile_done();
+}
+
+static mprofile_t *
+get_mprofile(void)
+{
+	mprofile_t *mp = (mprofile_t *)pthread_getspecific(mp_pthrd_key);
+
+	if (mp == NULL) {
+		mp = mprofile_create();
+		pthread_setspecific(mp_pthrd_key, mp);
+	}
+
+	return (mp);
 }
 
 /*
@@ -27,7 +48,8 @@ save_profile(void)
 static void
 init(void)
 {
-	mp = mprofile_create();
+	mprofile_init();
+	pthread_key_create(&mp_pthrd_key, merge_profile);
 	CRYPTO_set_mem_functions(mp_CRYPTO_malloc, mp_CRYPTO_realloc,
 	    mp_CRYPTO_free);
 	atexit(save_profile);
@@ -75,6 +97,7 @@ void *
 mp_CRYPTO_malloc(size_t sz, const char *file, int line)
 {
 	void *rv;
+	mprofile_t *mp = get_mprofile();
 #ifdef _WITH_STACKTRACE
 	char stack_buf[512];
 	mprofile_stack_t *mps = mprofile_init_stack(stack_buf,
@@ -91,7 +114,8 @@ mp_CRYPTO_malloc(size_t sz, const char *file, int line)
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif
 #endif	/* _WITH_STACKTRACE */
-	mprofile_record_alloc(mp, rv, sz, mps);
+	if (mp != NULL)
+		mprofile_record_alloc(mp, rv, sz, mps);
 
 	return (rv);
 }
@@ -99,6 +123,7 @@ mp_CRYPTO_malloc(size_t sz, const char *file, int line)
 void
 mp_CRYPTO_free(void *b, const char *file, int line)
 {
+	mprofile_t *mp = get_mprofile();
 #ifdef _WITH_STACKTRACE
 	char stack_buf[512];
 	mprofile_stack_t *mps = mprofile_init_stack(stack_buf,
@@ -114,13 +139,15 @@ mp_CRYPTO_free(void *b, const char *file, int line)
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif
 #endif	/* _WITH_STACKTRACE */
-	mprofile_record_free(mp, b, mps);
+	if (mp != NULL)
+		mprofile_record_free(mp, b, mps);
 	free(b);
 }
 
 void *
 mp_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 {
+	mprofile_t *mp = get_mprofile();
 	void *rv;
 #ifdef _WITH_STACKTRACE
 	char stack_buf[512];
@@ -141,12 +168,14 @@ mp_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif
 #endif	/* _WITH_STACKTRACE */
-	if (sz == 0)
-		mprofile_record_free(mp, b, mps);
-	else if (b == NULL)
-		mprofile_record_alloc(mp, rv, sz, mps);
-	else
-		mprofile_record_realloc(mp, rv, sz, b, mps);
+	if (mp != NULL) {
+		if (sz == 0)
+			mprofile_record_free(mp, b, mps);
+		else if (b == NULL)
+			mprofile_record_alloc(mp, rv, sz, mps);
+		else
+			mprofile_record_realloc(mp, rv, sz, b, mps);
+	}
 
 	return (rv);
 }

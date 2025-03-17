@@ -20,6 +20,8 @@ void mprofile_destroy_stack(mprofile_stack_t *);
 void mprofile_push_frame(mprofile_stack_t *, unsigned long long);
 unsigned int mprofile_get_stack_count(mprofile_stack_t *);
 unsigned int mprofile_get_stack_id(mprofile_stack_t *);
+mprofile_stack_t *mprofile_merge_stack(mprofile_stset_t *, mprofile_stset_t *,
+    unsigned int);
 #endif
 
 void mprofile_record_alloc(mprofile_t *, void *, size_t, mprofile_stack_t *);
@@ -28,8 +30,9 @@ void mprofile_record_realloc(mprofile_t *, void *, size_t, void *,
     mprofile_stack_t *);
 
 mprofile_t *mprofile_create(void);
-void mprofile_load_syms(mprofile_t *);
-void mprofile_save(mprofile_t *);
 void mprofile_destroy(mprofile_t *);
+void mprofile_save(mprofile_t *);
+void mprofile_merge(void);
+void mprofile_init(void);
 void mprofile_done(void);
 #endif

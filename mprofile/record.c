@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <dlfcn.h>
+#include <pthread.h>
 
 #include "utils/queue.h"
 #include "kelf.h"
@@ -39,6 +40,7 @@ struct mprofile_record {
 struct mprofile {
 	TAILQ_HEAD(mp_list, mprofile_record)	 mp_tqhead;
 	mprofile_stset_t			*mp_stset;
+	TAILQ_ENTRY(mprofile)			 mp_tqe;
 };
 
 struct shlib {
@@ -56,6 +58,12 @@ static struct syms *syms = NULL;
 static uint64_t mpr_id = 1;
 
 static struct timespec start_time_tv;
+
+static pthread_mutex_t mtx;
+
+static TAILQ_HEAD(profiles, mprofile)	profiles;
+
+static mprofile_t *master = NULL;
 
 static struct mprofile_record *
 create_mprofile_record(void)
@@ -155,8 +163,8 @@ print_stack(FILE *f, mprofile_stack_t *stack)
 }
 #endif
 
-void
-mprofile_save(mprofile_t *mp)
+static void
+profile_save(mprofile_t *mp)
 {
 	unsigned int i;
 	char *fname = getenv("MPROFILE_OUTF");
@@ -340,6 +348,58 @@ mprofile_load_syms(mprofile_t *mp)
 }
 
 void
+mprofile_save(mprofile_t *mp)
+{
+	pthread_mutex_lock(&mtx);
+	TAILQ_INSERT_TAIL(&profiles, mp, mp_tqe);
+	pthread_mutex_unlock(&mtx);
+}
+
+void
+mprofile_merge(void)
+{
+	struct mprofile		*mp, *walk;
+	mprofile_stack_t	*st;
+	struct mprofile_record	*mpr, *master_mpr;
+
+	TAILQ_FOREACH_SAFE(mp, &profiles, mp_tqe, walk) {
+		TAILQ_REMOVE(&profiles, mp, mp_tqe);
+		if (master == NULL) {
+			mp = master;
+			continue;
+		}
+
+		while ((mpr = TAILQ_FIRST(&mp->mp_tqhead)) != NULL) {
+			TAILQ_REMOVE(&mp->mp_tqhead, mpr, mpr_tqe);
+			TAILQ_FOREACH(master_mpr, &master->mp_tqhead, mpr_tqe) {
+				if (master_mpr->mpr_id < mpr->mpr_id)
+					continue;
+			}
+			TAILQ_INSERT_AFTER(&master->mp_tqhead, master_mpr,
+			    mpr, mpr_tqe);
+
+#ifdef	_WITH_STACKTRACE
+			if (mpr->mpr_stack_id != 0) {
+				st = mprofile_merge_stack(
+				    master->mp_stset, mp->mp_stset,
+				    mpr->mpr_stack_id);
+				mpr->mpr_stack_id = mprofile_get_stack_id(st);
+			}
+#endif
+		}
+
+		mprofile_destroy(mp);
+	}
+}
+
+void
+mprofile_init(void)
+{
+	pthread_mutex_init(&mtx, NULL);
+	TAILQ_INIT(&profiles);
+}
+
+void
 mprofile_done(void)
 {
 	unsigned int	i;
@@ -348,4 +408,6 @@ mprofile_done(void)
 		free(shlibs[i].shl_name);
 
 	kelf_close(syms);
+
+	pthread_mutex_destroy(&mtx);
 }

@@ -18,16 +18,21 @@ struct mprofile_stack {
 	unsigned int			 mps_count;
 	pthread_t			 mps_thread;
 	RB_ENTRY(mprofile_stack)	 mps_rbe;
+	RB_ENTRY(mprofile_stack)	 mps_id_rbe;
 	unsigned long long		*mps_stack;
 };
 
 struct mprofile_stack_set {
+	unsigned int	 			stset_id;
 	RB_HEAD(mp_stack_set, mprofile_stack)	stset_rbh;
+	RB_HEAD(mp_stack_id, mprofile_stack)	stset_id_rbh;
 };
 
 static int stack_compare(mprofile_stack_t *, mprofile_stack_t *);
+static int stack_id_compare(mprofile_stack_t *, mprofile_stack_t *);
 
 RB_GENERATE_STATIC(mp_stack_set, mprofile_stack, mps_rbe, stack_compare);
+RB_GENERATE_STATIC(mp_stack_id, mprofile_stack, mps_id_rbe, stack_id_compare);
 
 static int
 stack_compare(mprofile_stack_t *a_mps, mprofile_stack_t *b_mps)
@@ -51,6 +56,17 @@ stack_compare(mprofile_stack_t *a_mps, mprofile_stack_t *b_mps)
 		return (1);
 
 	return (0);
+}
+
+static int
+stack_id_compare(mprofile_stack_t *a_mps, mprofile_stack_t *b_mps)
+{
+	if (a_mps->mps_id < b_mps->mps_id)
+		return (-1);
+	else if (a_mps->mps_id > b_mps->mps_id)
+		return (1);
+	else
+		return (0);
 }
 
 mprofile_stack_t *
@@ -134,7 +150,6 @@ mprofile_stack_t *
 mprofile_add_stack(mprofile_stset_t *stset, mprofile_stack_t *new_mps)
 {
 	mprofile_stack_t	*mps;
-	static unsigned int	 stack_id = 1;
 
 	if (stset == NULL)
 		return (NULL);
@@ -146,8 +161,9 @@ mprofile_add_stack(mprofile_stset_t *stset, mprofile_stack_t *new_mps)
 		mps = mprofile_copy_stack(new_mps);
 		if (mps == NULL)
 			return (NULL);
-		mps->mps_id = stack_id++;
+		mps->mps_id = stset->stset_id++;
 		RB_INSERT(mp_stack_set, &stset->stset_rbh, mps);
+		RB_INSERT(mp_stack_id, &stset->stset_id_rbh, mps);
 	}
 
 	return (mps);
@@ -179,8 +195,11 @@ mprofile_create_stset(void)
 	mprofile_stset_t *stset;
 
 	stset = (mprofile_stset_t *) malloc(sizeof (mprofile_stset_t));
-	if (stset != NULL)
+	if (stset != NULL) {
 		RB_INIT(&stset->stset_rbh);
+		RB_INIT(&stset->stset_id_rbh);
+		stset->stset_id = 1;
+	}
 
 	return (stset);
 }
@@ -195,6 +214,7 @@ mprofile_destroy_stset(mprofile_stset_t *stset)
 
 	RB_FOREACH_SAFE(mps, mp_stack_set, &stset->stset_rbh, walk) {
 		RB_REMOVE(mp_stack_set, &stset->stset_rbh, mps);
+		RB_REMOVE(mp_stack_id, &stset->stset_id_rbh, mps);
 		mprofile_destroy_stack(mps);
 	}
 
@@ -239,4 +259,62 @@ mprofile_get_stack_count(mprofile_stack_t *mps)
 		return (0);
 
 	return (mps->mps_count);
+}
+
+mprofile_stack_t *
+mprofile_merge_stack(mprofile_stset_t *dst_stset, mprofile_stset_t *src_stset,
+    unsigned int stack_id)
+{
+	mprofile_stack_t	*old_mps, *new_mps;
+	mprofile_stack_t	 key = { 0 };
+
+	key.mps_id = stack_id;
+	old_mps = RB_FIND(mp_stack_id, &src_stset->stset_id_rbh, &key);
+	assert(old_mps != NULL);
+
+	/*
+	 *  if there is single instance just try to move it.
+	 */
+	if (old_mps->mps_count == 1) {
+		RB_REMOVE(mp_stack_set, &src_stset->stset_rbh, old_mps);
+		RB_REMOVE(mp_stack_id, &src_stset->stset_id_rbh, old_mps);
+		new_mps = RB_INSERT(mp_stack_set, &dst_stset->stset_rbh,
+		    old_mps);
+		if (new_mps == NULL) {
+			mprofile_stack_t *chk_mps;
+			chk_mps = RB_INSERT(mp_stack_id, &dst_stset->stset_id_rbh,
+			    old_mps);
+			assert(chk_mps == NULL);
+			/*
+			 * when moving then we must get new stack id,
+			 * which is unique for destination set.
+			 */
+			old_mps->mps_id = dst_stset->stset_id++;
+			new_mps = old_mps;
+		} else {
+			/* same stack exists in dst_stset, then just free it */
+			free(old_mps);
+			new_mps->mps_count++;
+		}
+	} else {
+		/* check if the same stack exists in destination */
+		new_mps = RB_FIND(mp_stack_set, &dst_stset->stset_rbh,
+		    old_mps);
+		if (new_mps == NULL) {
+			/*
+			 * we must insert copy to destination, because
+			 * mps_count > 1
+			 */
+			new_mps = mprofile_add_stack(dst_stset, old_mps);
+			if (new_mps == NULL) {
+				perror("No memory");
+				abort();
+			}
+		} else {
+			new_mps->mps_count++;
+		}
+		old_mps->mps_count--;
+	}
+
+	return (new_mps);
 }
