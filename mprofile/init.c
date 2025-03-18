@@ -8,6 +8,11 @@ static void *mp_CRYPTO_malloc(size_t, const char *, int);
 static void mp_CRYPTO_free(void *, const char *, int);
 static void *mp_CRYPTO_realloc(void *, size_t, const char *, int);
 
+struct memhdr {
+	size_t		mh_size;
+	uint64_t	mh_chk;
+};
+
 static pthread_key_t mp_pthrd_key;
 
 static void __attribute__ ((constructor)) init(void);
@@ -97,6 +102,7 @@ collect_backtrace(struct _Unwind_Context *uw_context, void *cb_arg)
 void *
 mp_CRYPTO_malloc(size_t sz, const char *file, int line)
 {
+	struct memhdr *mh;
 	void *rv;
 	mprofile_t *mp = get_mprofile();
 #ifdef _WITH_STACKTRACE
@@ -107,7 +113,14 @@ mp_CRYPTO_malloc(size_t sz, const char *file, int line)
 	mprofile_stack_t *mps = NULL;
 #endif
 
-	rv = malloc(sz);
+	mh = (struct memhdr *) malloc(sz + sizeof (struct memhdr));
+	if (mh != NULL) {
+		mh->mh_size = sz;
+		mh->mh_chk = (uint64_t)mh ^ sz;
+		rv = (void *)((char *)mh + sizeof (struct memhdr));
+	} else {
+		rv = NULL;
+	}
 #ifdef _WITH_STACKTRACE
 #ifdef USE_LIBUNWIND
 	collect_backtrace(mps);
@@ -124,7 +137,9 @@ mp_CRYPTO_malloc(size_t sz, const char *file, int line)
 void
 mp_CRYPTO_free(void *b, const char *file, int line)
 {
+	struct memhdr *mh = NULL;
 	mprofile_t *mp = get_mprofile();
+	uint64_t chk;
 #ifdef _WITH_STACKTRACE
 	char stack_buf[512];
 	mprofile_stack_t *mps = mprofile_init_stack(stack_buf,
@@ -140,16 +155,30 @@ mp_CRYPTO_free(void *b, const char *file, int line)
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif
 #endif	/* _WITH_STACKTRACE */
+
+	if (b != NULL) {
+		mh = (struct memhdr *)((char *)b - sizeof (struct memhdr));
+		chk = (uint64_t)mh ^ mh->mh_size;
+		if (chk != mh->mh_chk) {
+			fprintf(stderr, "%p memory corruption detected in %s!",
+			    b, __func__);
+			abort();
+		}
+	}
+
 	if (mp != NULL)
-		mprofile_record_free(mp, b, mps);
-	free(b);
+		mprofile_record_free(mp, b, (b == NULL) ? 0 : mh->mh_size, mps);
+	free(mh);
 }
 
 void *
 mp_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 {
+	struct memhdr *mh;
+	struct memhdr save_mh;
+	uint64_t chk;
 	mprofile_t *mp = get_mprofile();
-	void *rv;
+	void *rv = NULL;
 #ifdef _WITH_STACKTRACE
 	char stack_buf[512];
 	mprofile_stack_t *mps = mprofile_init_stack(stack_buf,
@@ -158,9 +187,29 @@ mp_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 	mprofile_stack_t *mps = NULL;
 #endif
 
-	rv = realloc(b, sz);
-	if (rv == NULL)
+	if (b != NULL) {
+		mh = (struct memhdr *)((char *)b - sizeof (struct memhdr));
+		chk = (uint64_t)mh ^ mh->mh_size;
+		if (chk != mh->mh_chk) {
+			fprintf(stderr, "%p memory corruption detected in %s!",
+			    b, __func__);
+			abort();
+		}
+		save_mh = *mh;
+	} else {
+		mh = NULL;
+	}
+
+	if (sz == 0)
+		mprofile_record_free(mp, b, (b == NULL) ? 0 : mh->mh_size, mps);
+
+	mh = (struct memhdr *)realloc(mh, (sz != 0) ?
+	    sz + sizeof (struct memhdr) : 0);
+	if (mh == NULL)
 		return (NULL);	/* consider recording failure */
+
+	if (sz == 0)
+		return (b);
 
 #ifdef _WITH_STACKTRACE
 #ifdef USE_LIBUNWIND
@@ -169,13 +218,16 @@ mp_CRYPTO_realloc(void *b, size_t sz, const char *file, int line)
 	_Unwind_Backtrace(collect_backtrace, mps);
 #endif
 #endif	/* _WITH_STACKTRACE */
+	rv = (void *)((char *)mh + sizeof (struct memhdr));
 	if (mp != NULL) {
-		if (sz == 0)
-			mprofile_record_free(mp, b, mps);
-		else if (b == NULL)
+		mh->mh_size = sz;
+		mh->mh_chk = (uint64_t)mh ^ sz;
+		if (b == NULL) {
 			mprofile_record_alloc(mp, rv, sz, mps);
-		else
-			mprofile_record_realloc(mp, rv, sz, b, mps);
+		} else {
+			mprofile_record_realloc(mp, rv, sz,
+			    save_mh.mh_size, b, mps);
+		}
 	}
 
 	return (rv);

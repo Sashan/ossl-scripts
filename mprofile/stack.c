@@ -89,7 +89,7 @@ mprofile_init_stack(char *buf, size_t buf_sz)
 		mps->mps_flags = MPS_FLAG_MANAGED;
 		mps->mps_stack_depth = 0;
 		mps->mps_stack_limit = MPS_STACK_DEPTH;
-		mps->mps_thread = 0;	/* TODO: set thread id/pthread_t */
+		mps->mps_thread = pthread_self();
 		mps->mps_count = 0;
 		memset(mps->mps_stack, 0,
 		    sizeof (unsigned long long) * MPS_STACK_DEPTH);
@@ -259,6 +259,15 @@ mprofile_get_stack_count(mprofile_stack_t *mps)
 		return (0);
 
 	return (mps->mps_count);
+}
+
+unsigned long long
+mprofile_get_thread_id(mprofile_stack_t *mps)
+{
+	if (mps == NULL)
+		return (0);
+
+	return ((unsigned long long)mps->mps_thread);
 }
 
 mprofile_stack_t *

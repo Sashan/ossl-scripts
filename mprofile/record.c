@@ -24,8 +24,11 @@ enum {
 #define	MPROFILE_REC_MEM	"\"addr\""
 #define	MPROFILE_REC_REALLOC	"\"realloc\""
 #define	MPROFILE_REC_SZ		"\"rsize\""
+#define	MPROFILE_REC_DELTA	"\"delta_sz\""
 #define	MPROFILE_REC_STATE	"\"state\""
 #define	MPROFILE_REC_STACK_ID	"\"stack_id\""
+#define	MPROFILE_REC_NEXT_ID	"\"next_id\""
+#define	MPROFILE_REC_PREV_ID	"\"prev_id\""
 #define	MPROFILE_TIMESTAMP	"\"time\""
 #define	MPROFILE_TIME_S		"\"s\""
 #define	MPROFILE_TIME_NS	"\"ns\""
@@ -33,11 +36,22 @@ struct mprofile_record {
 	uint64_t			 mpr_id;
 	void				*mpr_mem;
 	void				*mpr_realloc;
+					    /* returned by realloc() */
 	size_t	 			 mpr_sz;
+	ssize_t				 mpr_delta;
 	char				 mpr_state;
 	unsigned int			 mpr_stack_id;
+	uint64_t			 mpr_prev_id;
+	uint64_t			 mpr_next_id;
 	struct timespec			 mpr_ts;
 	TAILQ_ENTRY(mprofile_record)	 mpr_tqe;
+	/*
+	 * note: mpr_rbe is dual purposed. The first we use it
+	 * is to sort records by mpr_id when we merge per-thread
+	 * instances. On its second use we use it for construction
+	 * of allocation chains. Those two processing never happens
+	 * simultaneously, therefore we can have just one mpr_rbe.
+	 */
 	RB_ENTRY(mprofile_record)	 mpr_rbe;
 };
 
@@ -58,7 +72,6 @@ static struct shlib shlibs[MAX_SHLIBS];
 /* we keep symbols global */
 static struct syms *syms = NULL;
 
-/* TODO: must be atomic when going multithreaded */
 static uint64_t mpr_id = 0;
 
 static struct timespec start_time_tv;
@@ -69,17 +82,64 @@ static TAILQ_HEAD(profiles, mprofile)	profiles;
 
 static mprofile_t *master = NULL;
 
-RB_HEAD(mprofile_record_sort, mprofile_record) sorter;
+RB_HEAD(mprofile_record_sort, mprofile_record);
+
+RB_HEAD(mprofile_record_mem, mprofile_record);
 
 static int record_id_compare(struct mprofile_record *,
     struct mprofile_record *);
 
+static int record_mem_compare(struct mprofile_record *,
+    struct mprofile_record *);
+
+static struct mprofile_record_sort sorter;
+
 RB_GENERATE_STATIC(mprofile_record_sort, mprofile_record, mpr_rbe,
     record_id_compare);
+
+RB_GENERATE_STATIC(mprofile_record_mem, mprofile_record, mpr_rbe,
+    record_mem_compare);
+
 
 static int 
 record_id_compare(struct mprofile_record *a_mpr, struct mprofile_record *b_mpr)
 {
+	if (a_mpr->mpr_id < b_mpr->mpr_id)
+		return (-1);
+	else if (a_mpr->mpr_id > b_mpr->mpr_id)
+		return (1);
+	else
+		return (0);
+}
+
+static int 
+record_mem_compare(struct mprofile_record *a_mpr, struct mprofile_record *b_mpr)
+{
+	if (a_mpr->mpr_mem < b_mpr->mpr_mem)
+		return (-1);
+	else if (a_mpr->mpr_mem > b_mpr->mpr_mem)
+		return (1);
+	else
+		return (0);
+}
+
+static int 
+record_addr_compare(struct mprofile_record *a_mpr, struct mprofile_record *b_mpr)
+{
+	void	*b_mpr_mem;
+
+	/*
+	 * a_mpr is a key we are searching for
+	 * b_mpr comes from tree it's a value we are looking for
+	 *
+	 * if the value comes from realloc operation then we need to compare
+	 * the key with mpr_realloc (the address returned by  realloc()
+	 */
+	if (b_mpr->mpr_state == REALLOC)
+		b_mpr_mem = b_mpr->mpr_realloc;
+	else
+		b_mpr_mem = b_mpr->mpr_mem;
+
 	if (a_mpr->mpr_id < b_mpr->mpr_id)
 		return (-1);
 	else if (a_mpr->mpr_id > b_mpr->mpr_id)
@@ -129,7 +189,10 @@ print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_REALLOC,
 	    (unsigned long long)mpr->mpr_realloc);
 	fprintf(f, "\t\t%s : %zu,\n", MPROFILE_REC_SZ, mpr->mpr_sz);
+	fprintf(f, "\t\t%s : %zd,\n", MPROFILE_REC_DELTA, mpr->mpr_delta);
 	fprintf(f, "\t\t%s : %s,\n", MPROFILE_REC_STATE, state);
+	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_NEXT_ID, mpr->mpr_next_id);
+	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_PREV_ID, mpr->mpr_prev_id);
 	fprintf(f, "\t\t%s : %u,\n", MPROFILE_REC_STACK_ID,
 	    mpr->mpr_stack_id);
 	fprintf(f, "\t\t%s : {\n", MPROFILE_TIMESTAMP);
@@ -179,6 +242,8 @@ print_stack(FILE *f, mprofile_stack_t *stack)
 	fprintf(f, "\t\t\"id\" : %u,\n", mprofile_get_stack_id(stack));
 	fprintf(f, "\t\t\"stack_count\" : %u,\n",
 	    mprofile_get_stack_count(stack));
+	fprintf(f, "\t\t\"thread_id\" : %llu,\n",
+	    mprofile_get_thread_id(stack));
 	fprintf(f, "\t\t\"stack_trace\" : [ ");
 	mprofile_walk_stack(stack, print_trace, f);
 	fprintf(f, "\"\" ]\n");
@@ -278,7 +343,7 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz,
 }
 
 void
-mprofile_record_free(mprofile_t *mp, void *buf, mprofile_stack_t *mps)
+mprofile_record_free(mprofile_t *mp, void *buf, size_t sz, mprofile_stack_t *mps)
 {
 	struct mprofile_record *mpr;
 
@@ -291,6 +356,8 @@ mprofile_record_free(mprofile_t *mp, void *buf, mprofile_stack_t *mps)
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = 0;
 	mpr->mpr_state = FREE;
+	mpr->mpr_sz = sz;
+	mpr->mpr_delta = sz * -1;
 	mpr->mpr_id = atomic_add_long_nv((unsigned long *)&mpr_id, 1);
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
@@ -302,7 +369,7 @@ mprofile_record_free(mprofile_t *mp, void *buf, mprofile_stack_t *mps)
 
 void
 mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
-    void *old_buf, mprofile_stack_t *mps)
+    size_t orig_sz, void *old_buf, mprofile_stack_t *mps)
 {
 	struct mprofile_record *mpr;
 
@@ -314,6 +381,7 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = buf_sz;
+	mpr->mpr_delta = buf_sz - orig_sz;
 	mpr->mpr_realloc = old_buf;
 	mpr->mpr_state = REALLOC;
 	mpr->mpr_id = atomic_add_long_nv((unsigned long *)&mpr_id, 1);
@@ -371,7 +439,8 @@ mprofile_load_syms(mprofile_t *mp)
 
 	for (i = 0; i < MAX_SHLIBS; i++) {
 		if (shlibs[i].shl_name != NULL)
-			syms = kelf_open(shlibs[i].shl_name, syms, shlibs[i].shl_base);
+			syms = kelf_open(shlibs[i].shl_name, syms,
+			    shlibs[i].shl_base);
 	}
 #endif
 }
@@ -382,6 +451,82 @@ mprofile_add(mprofile_t *mp)
 	pthread_mutex_lock(&mtx);
 	TAILQ_INSERT_TAIL(&profiles, mp, mp_tqe);
 	pthread_mutex_unlock(&mtx);
+}
+
+static void
+build_chains(mprofile_t *mp)
+{
+	struct mprofile_record key_mpr;
+	struct mprofile_record *mpr, *tree_mpr;
+	struct mprofile_record_mem memtree;
+
+	RB_INIT(&memtree);
+	memset(&key_mpr, 0, sizeof (struct mprofile_record));
+
+	TAILQ_FOREACH(mpr, &mp->mp_tqhead, mpr_tqe) {
+		switch (mpr->mpr_state) {
+		case ALLOC:
+			tree_mpr = RB_INSERT(mprofile_record_mem, &memtree,
+			    mpr);
+			if (tree_mpr != NULL) {
+				fprintf(stderr,
+				    "%s 0x%p (alloc) already found in "
+				    "tree %p %p\n", __func__, mpr->mpr_mem,
+				    mpr, tree_mpr);
+				abort();
+			}
+			break;
+		case FREE:
+			if (mpr->mpr_mem == NULL)
+				continue;
+			key_mpr.mpr_mem = mpr->mpr_mem;
+			tree_mpr = RB_FIND(mprofile_record_mem, &memtree,
+			    &key_mpr);
+			if (tree_mpr == NULL) {
+				fprintf(stderr, "%s %p (free) address was not "
+				    "allocated\n", __func__, mpr->mpr_mem);
+				abort();
+			}
+			RB_REMOVE(mprofile_record_mem, &memtree, tree_mpr);
+			assert(tree_mpr->mpr_next_id == 0);
+			tree_mpr->mpr_next_id = mpr->mpr_id;
+			assert(mpr->mpr_prev_id == 0);
+			mpr->mpr_prev_id = tree_mpr->mpr_id;
+			break;
+		case REALLOC:
+			key_mpr.mpr_mem = mpr->mpr_realloc;
+			tree_mpr = RB_FIND(mprofile_record_mem, &memtree,
+			    &key_mpr);
+			if (tree_mpr == NULL) {
+				fprintf(stderr,
+				    "%s %p (realloc) address was not "
+				    "allocated\n", __func__, mpr->mpr_mem);
+				abort();
+			}
+			RB_REMOVE(mprofile_record_mem, &memtree, tree_mpr);
+			assert(tree_mpr->mpr_next_id == 0);
+			tree_mpr->mpr_next_id = mpr->mpr_id;
+			assert(mpr->mpr_prev_id == 0);
+			mpr->mpr_prev_id = tree_mpr->mpr_id;
+			/*
+			 * insert realloc record to tree.
+			 */
+			tree_mpr = RB_INSERT(mprofile_record_mem, &memtree,
+			    mpr);
+			if (tree_mpr != NULL) {
+				fprintf(stderr,
+				    "%s 0x%p (realloc) already found in "
+				    "tree %p %p\n", __func__, mpr->mpr_mem,
+				    mpr, tree_mpr);
+				abort();
+			}
+		}
+	}
+
+	/*
+	 * tree should be empty, if not then there must be leaks
+	 * We don't bother to report those leaks (at least now).
+	 */
 }
 
 void
@@ -427,6 +572,7 @@ mprofile_merge(void)
 		TAILQ_INSERT_TAIL(&master->mp_tqhead, mpr, mpr_tqe);
 	}
 
+	build_chains(master);
 	profile_save(master);
 }
 
