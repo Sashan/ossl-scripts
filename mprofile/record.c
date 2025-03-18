@@ -23,7 +23,6 @@ enum {
 #define	MPROFILE_REC_ID		"\"id\""
 #define	MPROFILE_REC_MEM	"\"addr\""
 #define	MPROFILE_REC_REALLOC	"\"realloc\""
-#define	MPROFILE_REC_SZ		"\"rsize\""
 #define	MPROFILE_REC_DELTA	"\"delta_sz\""
 #define	MPROFILE_REC_STATE	"\"state\""
 #define	MPROFILE_REC_STACK_ID	"\"stack_id\""
@@ -37,7 +36,6 @@ struct mprofile_record {
 	void				*mpr_mem;
 	void				*mpr_realloc;
 					    /* returned by realloc() */
-	size_t	 			 mpr_sz;
 	ssize_t				 mpr_delta;
 	char				 mpr_state;
 	unsigned int			 mpr_stack_id;
@@ -188,7 +186,6 @@ print_mprofile_record(FILE *f, struct mprofile_record *mpr)
 	    (unsigned long long)mpr->mpr_mem);
 	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_REALLOC,
 	    (unsigned long long)mpr->mpr_realloc);
-	fprintf(f, "\t\t%s : %zu,\n", MPROFILE_REC_SZ, mpr->mpr_sz);
 	fprintf(f, "\t\t%s : %zd,\n", MPROFILE_REC_DELTA, mpr->mpr_delta);
 	fprintf(f, "\t\t%s : %s,\n", MPROFILE_REC_STATE, state);
 	fprintf(f, "\t\t%s : %llu,\n", MPROFILE_REC_NEXT_ID, mpr->mpr_next_id);
@@ -331,7 +328,7 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	}
 
 	mpr->mpr_mem = buf;
-	mpr->mpr_sz = buf_sz;
+	mpr->mpr_delta = (ssize_t)buf_sz;
 	mpr->mpr_state = ALLOC;
 	mpr->mpr_id = atomic_add_long_nv((unsigned long *)&mpr_id, 1);
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
@@ -354,9 +351,7 @@ mprofile_record_free(mprofile_t *mp, void *buf, size_t sz, mprofile_stack_t *mps
 	}
 
 	mpr->mpr_mem = buf;
-	mpr->mpr_sz = 0;
 	mpr->mpr_state = FREE;
-	mpr->mpr_sz = sz;
 	mpr->mpr_delta = sz * -1;
 	mpr->mpr_id = atomic_add_long_nv((unsigned long *)&mpr_id, 1);
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
@@ -380,7 +375,6 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	}
 
 	mpr->mpr_mem = buf;
-	mpr->mpr_sz = buf_sz;
 	mpr->mpr_delta = buf_sz - orig_sz;
 	mpr->mpr_realloc = old_buf;
 	mpr->mpr_state = REALLOC;

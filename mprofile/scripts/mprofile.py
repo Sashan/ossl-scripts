@@ -28,20 +28,17 @@ def get_addr(mr):
 def get_realloc(mr):
 	return mr["realloc"]
 
-def get_rsize(mr):
-	return mr["rsize"]
+def get_delta_sz(mr):
+	return mr["delta_sz"]
 
-def set_rsize(mr, rsize):
-	mr["rsize"] = rsize
+def set_delta_sz(mr, delta_sz):
+	mr["delta_sz"] = delta_sz
 
 def get_id(mr):
 	return mr["id"]
 
 def get_index(mr):
 	return mr["id"] - 1
-
-def get_rsize(mr):
-	return mr["rsize"]
 
 def get_operation(mr):
 	return mr["state"]
@@ -82,11 +79,6 @@ def set_mem_current(mr, msize):
 def get_mem_current(mr):
 	return mr["mem_current"]
 
-def get_addr_search(mr):
-	if is_realloc(mr):
-		return get_realloc(mr)
-	else:
-		return get_addr(mr)
 
 #
 # this is a class wrapper around mr dictionary for ninja template to separate
@@ -111,14 +103,11 @@ class MR:
 	def get_realloc(self):
 		return get_realloc(self._mr)
 
-	def get_rsize(self):
-		return get_rsize(self._mr)
+	def get_delta_sz(self):
+		return get_delta_sz(self._mr)
 
 	def get_id(self):
 		return get_id(self._mr)
-
-	def get_rsize(self):
-		return get_rsize(self._mr)
 
 	def get_operation(self):
 		return get_operation(self._mr)
@@ -134,68 +123,13 @@ class MProfile:
 			leak = mr
 			mr = self.get_prev(mr)
 		self._leaks.append(leak)
-	#
-	# memory record is operation on address. There are
-	# three operations:
-	#	alloc, realloc, free
-	# chain of records captures a history/lifecycle
-	# of particular buffer identified by its address
-	#
-	# typical lifecycle looks like a chain of two
-	# records:
-	#	alloc -> free
-	#
-	# or it can be more eventful:
-	#	alloc -> realloc -> realloc -> ... -> realloc -> free
-	#
-	# __create_chains() private method constructs chains
-	# from records kept _mem_records list.
-	#
-	def __create_chains(self):
-		def find_matching_alloc(mr, mrecords):
-			#
-			# search _mem_records from start to current position
-			#
-			mrecords.reverse()
-			match_index = list(map(lambda mr : get_addr(mr),
-			    mrecords)).index(get_addr_search(mr))
-			found = mrecords[match_index]
-			if get_nextid(found) != 0 or is_free(found):
-				print("Bad allocation chain")
-				print(found)
-				print(mr)
-				found = None
-			return found
 
+	def __calc_current(self):
 		mem_current = 0
 		index = 0
 		for mr in self._mem_records:
-			if is_alloc(mr):
-				mem_current = mem_current + get_rsize(mr)
-				set_mem_current(mr, mem_current)
-				index = index + 1
-				continue # skip free operations
-
-			if is_free(mr) and get_addr(mr) == 0:
-				index = index + 1 # happens pn free(NULL)
-				continue
-
-			alloc_mr = find_matching_alloc(mr,
-			    self._mem_records[0:index])
-			alloc_mr = self.get_mr(get_id(alloc_mr))
-			set_nextid(alloc_mr, get_id(mr))
-			set_previd(mr, get_id(alloc_mr))
-
-			delta = get_rsize(mr) - get_rsize(alloc_mr)
-
-			set_rsize(mr, get_rsize(alloc_mr) + delta)
-
-			set_mem_current(mr, mem_current + delta)
-			if get_mem_current(mr) < 0:
-				mem_current = 0 # ? double free ?
-			else:
-				mem_current = get_mem_current(mr)
-			index = index + 1
+			mem_current = mem_current + get_delta_sz(mr)
+			set_mem_current(mr, mem_current)
 
 				
 	def __create_profile(self):
@@ -221,13 +155,7 @@ class MProfile:
 	def __init__(self, json_data):
 		self._leaks = None
 		self._mem_records = json_data["allocations"]
-		#
-		# jjosn data come with no chain links. we just
-		# add link keys to record dictionary
-		#
 		for mr in self._mem_records:
-			set_previd(mr, 0)
-			set_nextid(mr, 0)
 			set_mem_current(mr, 0)
 		self._stacks = json_data["stacks"]
 		#
@@ -236,8 +164,7 @@ class MProfile:
 		#
 		self._stacks.sort(key = lambda x : x["id"])
 		self._start_time = time_to_float(json_data["start_time"])
-		self.__create_chains()
-		self.__create_profile()
+		self.__calc_current()
 		self._samples = None
 
 	#
@@ -266,7 +193,7 @@ class MProfile:
 			mr = next_mr
 			next_mr = self.get_mr(get_nextid(mr))
 
-		return get_rsize(mr) != 0
+		return not is_free(mr)
 
 	#
 	# return list of memory leaks
@@ -282,11 +209,13 @@ class MProfile:
 	# return the size of given memory leak
 	#
 	def get_leak_sz(self, leak_mr):
+		leak_sz = get_delta_sz(leak_mr)
 		next_mr = self.get_next(leak_mr)
 		while next_mr != None:
 			leak_mr = next_mr
+			leak_sz = leak_sz + get_delta_sz(leak_mr)
 			next_mr = self.get_next(leak_mr)
-		return get_rsize(leak_mr)
+		return leak_sz
 
 	#
 	# return list of allocation operations
@@ -358,39 +287,11 @@ class MProfile:
 			return None
 
 	#
-	# get the size of memory operation associated with
-	# record.. Only allocations records have memory size.
-	# sizes of free and realloc operations must be calculated
-	# using the data in previous link in chain.
-	#
-	def get_size(self, mr):
-		if is_alloc(mr):
-			return get_rsize(mr)
-		if is_free(mr):
-			prev = self.get_prev(mr)
-			if prev != None:
-				return get_rsize(prev) * (-1)
-			else:
-				return 0
-		if is_realloc(mr):
-			prev = self.get_prev(mr)
-			if prev != None:
-				return get_rsize(mr) - get_rsize(prev)
-			else:
-				return get_rsize(mr)
-		else:
-			return 0
-
-	#
 	# calculate total number of bytes allocated
 	#
 	def get_total_mem(self):
-		# summary of all memory allocated by malloc()
-		alloc_sz = sum(map(lambda mr: get_rsize(mr), self.alloc_ops()))
-		# summary of all memory allocated via realloc, we deliberately
-		# ignore memory freed by realloc (rsize < 0)
-		alloc_sz = alloc_sz + sum(map(lambda mr: 0 if get_rsize(mr) < 0 \
-		    else get_rsize(mr), self.realloc_ops()))
+		alloc_sz = sum(map(lambda mr: 0 if get_delta_sz(mr) < 0 \
+		    else get_delta_sz(mr), self._mem_records))
 		return alloc_sz
 
 	#
@@ -398,12 +299,9 @@ class MProfile:
 	# which allocate memory
 	#
 	def get_total_allocs(self):
-		# all allocations
-		ops = len(list(self.alloc_ops()))
-		# only those reallocs which got memory (rsize > 0)
-		ops = ops + sum(map(
-		    lambda mr: 1 if get_rsize(mr) > 0 else 0, self.realloc_ops()))
-		return ops
+		alloc_ops = sum(map(lambda mr: 1 if get_delta_sz(mr) > 0 else 0,
+		    self._mem_records))
+		return alloc_ops
 
 	#
 	# returns a memory profile which is list of memory allocated
