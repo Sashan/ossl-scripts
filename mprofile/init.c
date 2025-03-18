@@ -16,14 +16,14 @@ static void
 merge_profile(void *void_mprof)
 {
 	mprofile_t	*mp = (mprofile_t *)void_mprof;
-
-	mprofile_save(mp);
+	/* profiles are freed in save_profile() on behalf of atexit() */
 	pthread_setspecific(mp_pthrd_key, NULL);
 }
 
 static void
 save_profile(void)
 {
+	pthread_key_delete(mp_pthrd_key);
 	mprofile_merge();
 	mprofile_done();
 }
@@ -35,6 +35,7 @@ get_mprofile(void)
 
 	if (mp == NULL) {
 		mp = mprofile_create();
+		mprofile_add(mp);
 		pthread_setspecific(mp_pthrd_key, mp);
 	}
 

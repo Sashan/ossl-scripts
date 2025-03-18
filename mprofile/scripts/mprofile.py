@@ -163,6 +163,7 @@ class MProfile:
 			if get_nextid(found) != 0 or is_free(found):
 				print("Bad allocation chain")
 				print(found)
+				print(mr)
 				found = None
 			return found
 

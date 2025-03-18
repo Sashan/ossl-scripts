@@ -5,8 +5,11 @@
 #include <stdint.h>
 #include <dlfcn.h>
 #include <pthread.h>
+#include <assert.h>
+#include <sys/atomic.h>
 
 #include "utils/queue.h"
+#include "utils/tree.h"
 #include "kelf.h"
 
 #include "mprofile.h"
@@ -35,6 +38,7 @@ struct mprofile_record {
 	unsigned int			 mpr_stack_id;
 	struct timespec			 mpr_ts;
 	TAILQ_ENTRY(mprofile_record)	 mpr_tqe;
+	RB_ENTRY(mprofile_record)	 mpr_rbe;
 };
 
 struct mprofile {
@@ -55,7 +59,7 @@ static struct shlib shlibs[MAX_SHLIBS];
 static struct syms *syms = NULL;
 
 /* TODO: must be atomic when going multithreaded */
-static uint64_t mpr_id = 1;
+static uint64_t mpr_id = 0;
 
 static struct timespec start_time_tv;
 
@@ -64,6 +68,25 @@ static pthread_mutex_t mtx;
 static TAILQ_HEAD(profiles, mprofile)	profiles;
 
 static mprofile_t *master = NULL;
+
+RB_HEAD(mprofile_record_sort, mprofile_record) sorter;
+
+static int record_id_compare(struct mprofile_record *,
+    struct mprofile_record *);
+
+RB_GENERATE_STATIC(mprofile_record_sort, mprofile_record, mpr_rbe,
+    record_id_compare);
+
+static int 
+record_id_compare(struct mprofile_record *a_mpr, struct mprofile_record *b_mpr)
+{
+	if (a_mpr->mpr_id < b_mpr->mpr_id)
+		return (-1);
+	else if (a_mpr->mpr_id > b_mpr->mpr_id)
+		return (1);
+	else
+		return (0);
+}
 
 static struct mprofile_record *
 create_mprofile_record(void)
@@ -237,13 +260,15 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	struct mprofile_record *mpr;
 
 	mpr = create_mprofile_record();
-	if (mpr == NULL)
+	if (mpr == NULL) {
+		fprintf(stderr, "%s create_mprofile_record() failed\n", __func__);
 		return;
+	}
 
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_state = ALLOC;
-	mpr->mpr_id = mpr_id++;
+	mpr->mpr_id = atomic_add_long_nv((unsigned long *)&mpr_id, 1);
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
@@ -258,13 +283,15 @@ mprofile_record_free(mprofile_t *mp, void *buf, mprofile_stack_t *mps)
 	struct mprofile_record *mpr;
 
 	mpr = create_mprofile_record();
-	if (mpr == NULL)
+	if (mpr == NULL) {
+		fprintf(stderr, "%s create_mprofile_record() failed\n", __func__);
 		return;
+	}
 
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = 0;
 	mpr->mpr_state = FREE;
-	mpr->mpr_id = mpr_id++;
+	mpr->mpr_id = atomic_add_long_nv((unsigned long *)&mpr_id, 1);
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
@@ -280,14 +307,16 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	struct mprofile_record *mpr;
 
 	mpr = create_mprofile_record();
-	if (mpr == NULL)
+	if (mpr == NULL) {
+		fprintf(stderr, "%s create_mprofile_record() failed\n", __func__);
 		return;
+	}
 
 	mpr->mpr_mem = buf;
 	mpr->mpr_sz = buf_sz;
 	mpr->mpr_realloc = old_buf;
 	mpr->mpr_state = REALLOC;
-	mpr->mpr_id = mpr_id++;
+	mpr->mpr_id = atomic_add_long_nv((unsigned long *)&mpr_id, 1);
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
@@ -348,7 +377,7 @@ mprofile_load_syms(mprofile_t *mp)
 }
 
 void
-mprofile_save(mprofile_t *mp)
+mprofile_add(mprofile_t *mp)
 {
 	pthread_mutex_lock(&mtx);
 	TAILQ_INSERT_TAIL(&profiles, mp, mp_tqe);
@@ -360,23 +389,19 @@ mprofile_merge(void)
 {
 	struct mprofile		*mp, *walk;
 	mprofile_stack_t	*st;
-	struct mprofile_record	*mpr, *master_mpr;
+	struct mprofile_record	*mpr, *chk;
+
+	RB_INIT(&sorter);
 
 	TAILQ_FOREACH_SAFE(mp, &profiles, mp_tqe, walk) {
 		TAILQ_REMOVE(&profiles, mp, mp_tqe);
-		if (master == NULL) {
-			mp = master;
-			continue;
-		}
+		if (master == NULL)
+			master = mp;
 
 		while ((mpr = TAILQ_FIRST(&mp->mp_tqhead)) != NULL) {
 			TAILQ_REMOVE(&mp->mp_tqhead, mpr, mpr_tqe);
-			TAILQ_FOREACH(master_mpr, &master->mp_tqhead, mpr_tqe) {
-				if (master_mpr->mpr_id < mpr->mpr_id)
-					continue;
-			}
-			TAILQ_INSERT_AFTER(&master->mp_tqhead, master_mpr,
-			    mpr, mpr_tqe);
+			chk = RB_INSERT(mprofile_record_sort, &sorter, mpr);
+			assert(chk == NULL);
 
 #ifdef	_WITH_STACKTRACE
 			if (mpr->mpr_stack_id != 0) {
@@ -388,8 +413,21 @@ mprofile_merge(void)
 #endif
 		}
 
-		mprofile_destroy(mp);
+		/*
+		 * we want to keep master
+		 */
+		if (master != mp)
+			mprofile_destroy(mp);
+
 	}
+
+	while (!RB_EMPTY(&sorter)) {
+		mpr = RB_MIN(mprofile_record_sort, &sorter);
+		RB_REMOVE(mprofile_record_sort, &sorter, mpr);
+		TAILQ_INSERT_TAIL(&master->mp_tqhead, mpr, mpr_tqe);
+	}
+
+	profile_save(master);
 }
 
 void

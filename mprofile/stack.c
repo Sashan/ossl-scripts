@@ -281,15 +281,23 @@ mprofile_merge_stack(mprofile_stset_t *dst_stset, mprofile_stset_t *src_stset,
 		new_mps = RB_INSERT(mp_stack_set, &dst_stset->stset_rbh,
 		    old_mps);
 		if (new_mps == NULL) {
-			mprofile_stack_t *chk_mps;
-			chk_mps = RB_INSERT(mp_stack_id, &dst_stset->stset_id_rbh,
-			    old_mps);
-			assert(chk_mps == NULL);
+			mprofile_stack_t *chk_mps_id;
+			chk_mps_id = RB_INSERT(mp_stack_id,
+			    &dst_stset->stset_id_rbh, old_mps);
+			if (chk_mps_id != NULL) {
+				/*
+				 * need to generate new stack set id
+				 * and insert it.
+				 */
+				old_mps->mps_id = dst_stset->stset_id++;
+				chk_mps_id = RB_INSERT(mp_stack_id,
+				    &dst_stset->stset_id_rbh, old_mps);
+				assert(chk_mps_id == NULL);
+			}
 			/*
 			 * when moving then we must get new stack id,
 			 * which is unique for destination set.
 			 */
-			old_mps->mps_id = dst_stset->stset_id++;
 			new_mps = old_mps;
 		} else {
 			/* same stack exists in dst_stset, then just free it */
