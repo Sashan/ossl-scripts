@@ -418,8 +418,8 @@ walk_stack(unsigned long long frame, void *arg)
  * to find list of shared libraries. There must
  * better way to obtain the list of shared libraries.
  */
-void
-mprofile_load_syms(mprofile_t *mp)
+static void
+load_syms(mprofile_t *mp)
 {
 #ifdef _WITH_STACKTRACE
 	unsigned int	i;
@@ -567,6 +567,7 @@ mprofile_merge(void)
 	}
 
 	build_chains(master);
+	load_syms(master);
 	profile_save(master);
 }
 

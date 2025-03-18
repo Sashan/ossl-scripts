@@ -150,7 +150,7 @@
 		<ul>{% for op in mp.get_chain(leak) %}
 		    <li class="leak-trace-button" id="leak-{{ leak.id }}-{{ op.id }}" onclick="toggle('show-leak-{{ leak.id }}-{{ op.id }}')">
 			<div class="leak-trace" id="ref-leak-{{ leak.id }}-{{ op.id }}">
-			    <div class="code">{{ MR(op).get_operation() }}({{ MR(op).get_rsize() }}) at {{ mp.get_time(op) }}</div>
+			    <div class="code">{{ MR(op).get_operation() }}({{ MR(op).get_delta_sz() }}) at {{ mp.get_time(op) }}</div>
 			</div>
 			<div class="leak-trace-full" id="show-leak-{{ leak.id }}-{{ op.id }}">
 			    <ul>{% for frame in mp.get_stack(op) %}

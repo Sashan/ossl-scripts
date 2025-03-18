@@ -340,11 +340,23 @@ class MProfile:
 
 	def samples(self, samples_count):
 		slice_size = int(len(self._mem_records)/samples_count)
+		if slice_size == 0:
+			self._samples = None
+			return
 		mem_slices = [ self._mem_records[i : i + slice_size ]
 		    for i in range(0, len(self._mem_records), slice_size) ]
 		self._samples = list(map(
 		    lambda x: max(x, key = lambda k : get_mem_current(k)),
 		    mem_slices))
+
+	def check(self):
+		import pdb;pdb.set_trace()
+		test = 1
+		for mr in self._mem_records:
+			if get_id(mr) != test:
+				print("Expected {0} for {1}".format(test,
+				    get_id(mr)))
+			test = test + 1
 
 def create_parser():
 	parser = argparse.ArgumentParser()
@@ -365,6 +377,9 @@ def create_parser():
 	parser.add_argument("-r", "--samples",
 	    help = "reduce the set of events for html output",
 	    default = "0")
+	parser.add_argument("-c", "--check",
+	    help = "check the source data and report errors",
+	    default = "store_true")
 
 	return parser
 
@@ -420,6 +435,9 @@ if __name__ == "__main__":
 	j = json.load(open(args.json_file))
 
 	mp = MProfile(j)
+
+	if args.check == True:
+		mp.check()
 
 	if args.output:
 		report_to_html(mp, args)
