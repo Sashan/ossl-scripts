@@ -55,6 +55,21 @@ get_mprofile(void)
 
 	if (mp == NULL) {
 		mp = mprofile_create();
+		/*
+		 * My original plan was to call mprofile_add() from
+		 * merge_profile() which is a destructor associated with
+		 * pthread key to thread specific data. However it did
+		 * not work. I was always losing few records.
+		 *
+		 * I suspect there is something not quite right at libc on
+		 * OpenBSD. It looks like thread specific storage associated
+		 * with key silently changes/leaks with the first call to
+		 * pthread_create(). The first allocations were happening
+		 * before pthread_create() got called.
+		 *
+		 * As a workaround we just add mprofile to list of profiles
+		 * when it is created for thread.
+		 */
 		mprofile_add(mp);
 		pthread_setspecific(mp_pthrd_key, mp);
 	}
