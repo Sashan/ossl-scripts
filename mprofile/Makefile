@@ -54,7 +54,7 @@ stack.o: stack.c
 	$(CC) $(CPPFLAGS) -c -O0 -g -o stack.o stack.c
 
 libmprofile.so: init.o ksyms.o record.o stack.o
-	$(CC) -shared -fPIC -o libmprofile.so init.o record.o \
+	$(CC) -pthread -shared -fPIC -o libmprofile.so init.o record.o \
 	    stack.o ksyms.o -lelf $(LDFLAGS) -L$(OSSLLIB) -lcrypto
 
 clean:
