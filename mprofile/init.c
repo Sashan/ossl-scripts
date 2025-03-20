@@ -64,10 +64,10 @@ static pthread_key_t mp_pthrd_key;
 
 static void __attribute__ ((constructor)) init(void);
 
+/* ARGSUSED */
 static void
 merge_profile(void *void_mprof)
 {
-	mprofile_t	*mp = (mprofile_t *)void_mprof;
 	/* profiles are freed in save_profile() on behalf of atexit() */
 	pthread_setspecific(mp_pthrd_key, NULL);
 }
@@ -257,18 +257,13 @@ init(void)
 static void
 update_alloc(uint64_t delta)
 {
-	uint64_t current, max_current;
-	uint64_t max;
-
-	/* Perhaps ACQUIRE here should be sufficient */
-	current = __atomic_add_fetch(&ms.ms_current, delta, __ATOMIC_ACQ_REL);
+	__atomic_add_fetch(&ms.ms_current, delta, __ATOMIC_RELAXED);
 }
 
 static void
 update_release(uint64_t delta)
 {
-	/* Perhaps ACQUIRE here should be sufficient */
-	__atomic_sub_fetch(&ms.ms_current, delta, __ATOMIC_ACQ_REL);
+	__atomic_sub_fetch(&ms.ms_current, delta, __ATOMIC_RELAXED);
 }
 
 static void *

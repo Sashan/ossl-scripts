@@ -83,7 +83,9 @@ struct shlib {
 static struct shlib shlibs[MAX_SHLIBS];
 
 /* we keep symbols global */
+#ifdef	_WITH_STACKTRACE
 static struct syms *syms = NULL;
+#endif
 
 static uint64_t mpr_id = 0;
 
@@ -139,20 +141,6 @@ record_mem_compare(struct mprofile_record *a_mpr, struct mprofile_record *b_mpr)
 static int 
 record_addr_compare(struct mprofile_record *a_mpr, struct mprofile_record *b_mpr)
 {
-	void	*b_mpr_mem;
-
-	/*
-	 * a_mpr is a key we are searching for
-	 * b_mpr comes from tree it's a value we are looking for
-	 *
-	 * if the value comes from realloc operation then we need to compare
-	 * the key with mpr_realloc (the address returned by  realloc()
-	 */
-	if (b_mpr->mpr_state == REALLOC)
-		b_mpr_mem = b_mpr->mpr_realloc;
-	else
-		b_mpr_mem = b_mpr->mpr_mem;
-
 	if (a_mpr->mpr_id < b_mpr->mpr_id)
 		return (-1);
 	else if (a_mpr->mpr_id > b_mpr->mpr_id)
@@ -266,10 +254,11 @@ print_stack(FILE *f, mprofile_stack_t *stack)
 static void
 profile_save(mprofile_t *mp)
 {
-	unsigned int i;
 	char *fname = getenv("MPROFILE_OUTF");
 	FILE *f;
+#ifdef	_WITH_STACKTRACE
 	mprofile_stack_t *stack;
+#endif
 	struct mprofile_record *mpr;
 	int first = 1;
 
@@ -433,6 +422,7 @@ add_shlib(Dl_info *dli)
 	shlibs[i].shl_base = (uintptr_t)dli->dli_fbase;
 }
 
+#ifdef	_WITH_STACKTRACE
 static void
 walk_stack(unsigned long long frame, void *arg)
 {
@@ -441,6 +431,7 @@ walk_stack(unsigned long long frame, void *arg)
 	if (dladdr((uintptr_t *)frame, &dli) != 0)
 		add_shlib(&dli);
 }
+#endif
 
 /*
  * This is expensive, we walk trhough all stacks
@@ -556,8 +547,10 @@ void
 mprofile_merge(int link_chains)
 {
 	struct mprofile		*mp, *walk;
+#ifdef	_WITH_STACKTRACE
 	mprofile_stack_t	*st;
-	struct mprofile_record	*mpr, *chk;
+#endif
+	struct mprofile_record	*mpr;
 
 	RB_INIT(&sorter);
 
@@ -568,8 +561,12 @@ mprofile_merge(int link_chains)
 
 		while ((mpr = TAILQ_FIRST(&mp->mp_tqhead)) != NULL) {
 			TAILQ_REMOVE(&mp->mp_tqhead, mpr, mpr_tqe);
-			chk = RB_INSERT(mprofile_record_sort, &sorter, mpr);
-			assert(chk == NULL);
+#ifdef	NDEBUG
+			RB_INSERT(mprofile_record_sort, &sorter, mpr);
+#else
+			assert(RB_INSERT(mprofile_record_sort, &sorter,
+			    mpr) == NULL);
+#endif
 
 #ifdef	_WITH_STACKTRACE
 			if (mpr->mpr_stack_id != 0) {
