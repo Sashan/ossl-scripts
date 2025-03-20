@@ -617,7 +617,9 @@ mprofile_done(void)
 	for (i = 0; i < MAX_SHLIBS; i++)
 		free(shlibs[i].shl_name);
 
+#ifdef	_WITH_STACKTRACE
 	kelf_close(syms);
+#endif
 
 	pthread_mutex_destroy(&mtx);
 }

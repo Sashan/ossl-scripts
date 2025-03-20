@@ -214,8 +214,8 @@ init_trace_with_stacks_with_chains(void)
 
 #endif
 
-static void
-init(void)
+void
+mprofile_start(void)
 {
 	char *mprofile_mode = getenv("MPROFILE_MODE");
 	char default_mode[2] = { '1', 0 };
@@ -246,6 +246,12 @@ init(void)
 	default:
 		init_stats();
 	}
+}
+
+static void
+init(void)
+{
+	mprofile_start();
 }
 
 static void
