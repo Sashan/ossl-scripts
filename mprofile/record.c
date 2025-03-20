@@ -551,7 +551,7 @@ build_chains(mprofile_t *mp)
 }
 
 void
-mprofile_merge(void)
+mprofile_merge(int link_chains)
 {
 	struct mprofile		*mp, *walk;
 	mprofile_stack_t	*st;
@@ -593,7 +593,9 @@ mprofile_merge(void)
 		TAILQ_INSERT_TAIL(&master->mp_tqhead, mpr, mpr_tqe);
 	}
 
-	build_chains(master);
+	if (link_chains == 1)
+		build_chains(master);
+
 	load_syms(master);
 	profile_save(master);
 }

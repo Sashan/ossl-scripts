@@ -109,7 +109,17 @@ static void
 save_profile_trace(void)
 {
 	pthread_key_delete(mp_pthrd_key);
-	mprofile_merge();
+	/* don't link alloc (free, realloc) ops to chains */
+	mprofile_merge(0);
+	mprofile_done();
+}
+
+static void
+save_profile_trace_link_chains(void)
+{
+	pthread_key_delete(mp_pthrd_key);
+	/* link alloc (free, realloc) ops to chains */
+	mprofile_merge(1);
 	mprofile_done();
 }
 
@@ -165,6 +175,16 @@ init_trace(void)
 	atexit(save_profile_trace);
 }
 
+static void
+init_trace_with_chains(void)
+{
+	mprofile_init();
+	pthread_key_create(&mp_pthrd_key, merge_profile);
+	CRYPTO_set_mem_functions(mp_CRYPTO_malloc_trace,
+	    mp_CRYPTO_realloc_trace, mp_CRYPTO_free_trace);
+	atexit(save_profile_trace_link_chains);
+}
+
 #ifdef _WITH_STACKTRACE
 /*
  * We need to use at exit (instead of library destructor), so all shared
@@ -179,6 +199,17 @@ init_trace_with_stacks(void)
 	    mp_CRYPTO_realloc_trace_with_stack,
 	    mp_CRYPTO_free_trace_with_stack);
 	atexit(save_profile_trace);
+}
+
+static void
+init_trace_with_stacks_with_chains(void)
+{
+	mprofile_init();
+	pthread_key_create(&mp_pthrd_key, merge_profile);
+	CRYPTO_set_mem_functions(mp_CRYPTO_malloc_trace_with_stack,
+	    mp_CRYPTO_realloc_trace_with_stack,
+	    mp_CRYPTO_free_trace_with_stack);
+	atexit(save_profile_trace_link_chains);
 }
 
 #endif
@@ -202,6 +233,14 @@ init(void)
 #ifdef _WITH_STACKTRACE
 	case '3':
 		init_trace_with_stacks();
+		break;
+#endif
+	case '4':
+		init_trace_with_chains();
+		break;
+#ifdef _WITH_STACKTRACE
+	case '5':
+		init_trace_with_stacks_with_chains();
 		break;
 #endif
 	default:
