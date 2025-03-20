@@ -326,7 +326,9 @@ mprofile_destroy(mprofile_t *mp)
 		TAILQ_REMOVE(&mp->mp_tqhead, mpr, mpr_tqe);
 		free(mpr);
 	}
+#ifdef _WITH_STACKTRACE
 	mprofile_destroy_stset(mp->mp_stset);
+#endif
 	free(mp);
 }
 
