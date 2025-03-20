@@ -349,8 +349,12 @@ mprofile_record_alloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
-	mps = mprofile_add_stack(mp->mp_stset, mps);
-	mpr->mpr_stack_id = mprofile_get_stack_id(mps);
+	if (mps != NULL) {
+		mps = mprofile_add_stack(mp->mp_stset, mps);
+		mpr->mpr_stack_id = mprofile_get_stack_id(mps);
+	} else {
+		mpr->mpr_stack_id = 0;
+	}
 #endif
 }
 
@@ -372,8 +376,12 @@ mprofile_record_free(mprofile_t *mp, void *buf, size_t sz, mprofile_stack_t *mps
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
-	mps = mprofile_add_stack(mp->mp_stset, mps);
-	mpr->mpr_stack_id = mprofile_get_stack_id(mps);
+	if (mps != NULL) {
+		mps = mprofile_add_stack(mp->mp_stset, mps);
+		mpr->mpr_stack_id = mprofile_get_stack_id(mps);
+	} else {
+		mpr->mpr_stack_id = 0;
+	}
 #endif
 }
 
@@ -397,8 +405,12 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 	TAILQ_INSERT_TAIL(&mp->mp_tqhead, mpr, mpr_tqe);
 
 #ifdef _WITH_STACKTRACE
-	mps = mprofile_add_stack(mp->mp_stset, mps);
-	mpr->mpr_stack_id = mprofile_get_stack_id(mps);
+	if (mps != NULL) {
+		mps = mprofile_add_stack(mp->mp_stset, mps);
+		mpr->mpr_stack_id = mprofile_get_stack_id(mps);
+	} else {
+		mpr->mpr_stack_id = 0;
+	}
 #endif
 }
 

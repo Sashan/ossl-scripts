@@ -3,7 +3,12 @@ CPPFLAGS+=-g
 CPPFLAGS+=-O0
 LDFLAGS=-L$(OPENSSL_LIB_PATH)
 
-all: mprofile-sha256.json mprofile-realloc.json
+all:	mprofile-sha256-stats.json \
+	mprofile-sha256-chains.json \
+	mprofile-sha256-stacks.json \
+ 	mprofile-realloc-stats.json \
+ 	mprofile-realloc-chains.json \
+ 	mprofile-realloc-stacks.json
 
 mprofile-sha256-stats.json: sha256
 	LD_PRELOAD=../libmprofile.so MPROFILE_OUTF=./mprofile-sha256-stats.json \
