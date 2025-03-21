@@ -45,6 +45,7 @@ struct memhdr {
 #define	MS_ALLOCS		"\"allocs\""
 #define	MS_RELEASES		"\"releases\""
 #define	MS_REALLOCS		"\"reallocs\""
+#define	MS_MAX			"\"max\""
 #define	MS_TSTART		"\"tstart\""
 #define	MS_TFINISH		"\"tfinish\""
 #define	MS_SEC			"\"sec\""
@@ -55,6 +56,7 @@ static struct memstats {
 	uint64_t	ms_reallocs;
 	uint64_t	ms_allocs;
 	uint64_t	ms_free;
+	uint64_t	ms_max;
 	uint64_t	ms_current;
 	struct timespec	ms_start;
 	struct timespec	ms_finish;
@@ -94,6 +96,7 @@ save_stats(void)
 	fprintf(f, "\t%s : %llu,\n", MS_ALLOCS, ms.ms_allocs);
 	fprintf(f, "\t%s : %llu,\n", MS_RELEASES, ms.ms_free);
 	fprintf(f, "\t%s : %llu,\n", MS_REALLOCS, ms.ms_reallocs);
+	fprintf(f, "\t%s : %llu,\n", MS_MAX, ms.ms_max);
 	fprintf(f, "\t%s : {\n", MS_TSTART);
 	fprintf(f, "\t\t%s : %llu,\n", MS_SEC, ms.ms_start.tv_sec);
 	fprintf(f, "\t\t%s : %ld,\n", MS_NSEC, ms.ms_start.tv_nsec);
@@ -257,13 +260,19 @@ init(void)
 static void
 update_alloc(uint64_t delta)
 {
-	__atomic_add_fetch(&ms.ms_current, delta, __ATOMIC_RELAXED);
+	uint64_t	current, max;
+
+	current = __atomic_add_fetch(&ms.ms_current, delta, __ATOMIC_ACQ_REL);
+	max = __atomic_load_n(&ms.ms_max, __ATOMIC_ACQUIRE);
+	while (current > max)
+		__atomic_compare_exchange_n(&ms.ms_max, &max, current,
+		    0 /* want strong */, __ATOMIC_RELEASE, __ATOMIC_ACQUIRE);
 }
 
 static void
 update_release(uint64_t delta)
 {
-	__atomic_sub_fetch(&ms.ms_current, delta, __ATOMIC_RELAXED);
+	__atomic_sub_fetch(&ms.ms_current, delta, __ATOMIC_ACQ_REL);
 }
 
 static void *
