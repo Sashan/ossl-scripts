@@ -51,4 +51,5 @@ void mprofile_add(mprofile_t *);
 void mprofile_merge(int);
 void mprofile_init(void);
 void mprofile_done(void);
+const char *mprofile_get_annotation(void);
 #endif

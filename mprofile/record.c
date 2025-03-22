@@ -275,6 +275,7 @@ profile_save(mprofile_t *mp)
 	    (long long)start_time_tv.tv_sec);
 	fprintf(f, "\t%s : %lu\n", MPROFILE_TIME_NS, start_time_tv.tv_nsec);
 	fprintf(f, "  },\n");
+	fprintf(f, "\tannotation : \"%s\",\n", mprofile_get_annotation());
 	fprintf(f, "  \"allocations\" : [\n");
 	TAILQ_FOREACH(mpr, &mp->mp_tqhead, mpr_tqe) {
 		if (first == 0)
@@ -619,4 +620,28 @@ mprofile_done(void)
 #endif
 
 	pthread_mutex_destroy(&mtx);
+}
+
+const char *
+mprofile_get_annotation(void)
+{
+	char *annotation = getenv("MPROFILE_ANNOTATION");
+	static char annotation_buf[512];
+	char *dst, *src;
+
+	if (annotation == NULL)
+		return ("FooBar annotation");
+
+	src = annotation;
+	annotation_buf[511] = '\0';
+	dst = annotation_buf;
+	while (*src && dst < &annotation_buf[511]) {
+		if (*src == '"')
+			*dst = '\\';
+		else
+			*dst = *src++;
+		dst++;
+	}
+
+	return (annotation_buf);
 }
