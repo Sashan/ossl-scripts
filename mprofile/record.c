@@ -535,7 +535,7 @@ build_chains(mprofile_t *mp)
 }
 
 void
-mprofile_write(FILE *f, int link_chains)
+mprofile_save(FILE *f, int link_chains)
 {
 	struct mprofile		*mp, *walk;
 #ifdef	_WITH_STACKTRACE
