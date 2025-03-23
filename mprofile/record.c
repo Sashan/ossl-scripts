@@ -300,7 +300,6 @@ profile_save(FILE *f, mprofile_t *mp)
 void
 mprofile_destroy(mprofile_t *mp)
 {
-	unsigned int i;
 	struct mprofile_record *mpr, *walk;
 
 	TAILQ_FOREACH_SAFE(mpr, &mp->mp_tqhead, mpr_tqe, walk) {
@@ -397,6 +396,7 @@ mprofile_record_realloc(mprofile_t *mp, void *buf, size_t buf_sz,
 #endif
 }
 
+#ifdef	_WITH_STACKTRACE
 static void
 add_shlib(Dl_info *dli)
 {
@@ -414,7 +414,6 @@ add_shlib(Dl_info *dli)
 	shlibs[i].shl_base = (uintptr_t)dli->dli_fbase;
 }
 
-#ifdef	_WITH_STACKTRACE
 static void
 walk_stack(unsigned long long frame, void *arg)
 {

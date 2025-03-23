@@ -31,9 +31,11 @@ static void *mp_CRYPTO_malloc_trace(unsigned long, const char *, int);
 static void mp_CRYPTO_free_trace(void *, const char *, int);
 static void *mp_CRYPTO_realloc_trace(void *, unsigned long, const char *, int);
 
+#ifdef _WITH_STACKTRACE
 static void *mp_CRYPTO_malloc_trace_with_stack(unsigned long, const char *, int);
 static void mp_CRYPTO_free_trace_with_stack(void *, const char *, int);
 static void *mp_CRYPTO_realloc_trace_with_stack(void *, unsigned long, const char *, int);
+#endif
 
 struct memhdr {
 	size_t		mh_size;
