@@ -48,7 +48,7 @@ void mprofile_record_realloc(mprofile_t *, void *, size_t, size_t, void *,
 mprofile_t *mprofile_create(void);
 void mprofile_destroy(mprofile_t *);
 void mprofile_add(mprofile_t *);
-void mprofile_merge(int);
+void mprofile_save(FILE*, int);
 void mprofile_init(void);
 void mprofile_done(void);
 const char *mprofile_get_annotation(void);

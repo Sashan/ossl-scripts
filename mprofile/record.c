@@ -252,23 +252,16 @@ print_stack(FILE *f, mprofile_stack_t *stack)
 #endif
 
 static void
-profile_save(mprofile_t *mp)
+profile_save(FILE *f, mprofile_t *mp)
 {
-	char *fname = getenv("MPROFILE_OUTF");
-	FILE *f;
 #ifdef	_WITH_STACKTRACE
 	mprofile_stack_t *stack;
 #endif
 	struct mprofile_record *mpr;
 	int first = 1;
 
-	if (fname == NULL)
-		return;
-
-	f = fopen(fname, "w");
 	if (f == NULL)
 		return;
-
 	
 	fprintf(f, "{ \"start_time\" : {\n");
 	fprintf(f, "\t%s : %lld,\n", MPROFILE_TIME_S,
@@ -302,8 +295,6 @@ profile_save(mprofile_t *mp)
 	fprintf(f, " \"stacks\" : [\n");
 	fprintf(f, "]}");
 #endif
-
-	fclose(f);
 }
 
 void
@@ -545,7 +536,7 @@ build_chains(mprofile_t *mp)
 }
 
 void
-mprofile_merge(int link_chains)
+mprofile_write(FILE *f, int link_chains)
 {
 	struct mprofile		*mp, *walk;
 #ifdef	_WITH_STACKTRACE
@@ -597,7 +588,7 @@ mprofile_merge(int link_chains)
 		build_chains(master);
 
 	load_syms(master);
-	profile_save(master);
+	profile_save(f, master);
 }
 
 void

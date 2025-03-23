@@ -64,6 +64,8 @@ static struct memstats {
 
 static pthread_key_t mp_pthrd_key;
 
+static FILE *out_file;
+
 static void __attribute__ ((constructor)) init(void);
 
 /* ARGSUSED */
@@ -77,36 +79,27 @@ merge_profile(void *void_mprof)
 static void
 save_stats(void)
 {
-	FILE	*f;
-	char	*fname;
-
 	clock_gettime(CLOCK_REALTIME, &ms.ms_finish);
 
-	fname = getenv("MPROFILE_OUTF");
-	if (fname == NULL)
-		return;
+	fprintf(out_file, "{\n");
+	fprintf(out_file, "\t\"annotation\" : \"%s\",\n", mprofile_get_annotation());
+	fprintf(out_file, "\t%s : %llu,\n", MS_TOTAL_ALLOCATED, ms.ms_total_allocated);
+	fprintf(out_file, "\t%s : %llu,\n", MS_TOTAL_RELEASED, ms.ms_total_released);
+	fprintf(out_file, "\t%s : %llu,\n", MS_ALLOCS, ms.ms_allocs);
+	fprintf(out_file, "\t%s : %llu,\n", MS_RELEASES, ms.ms_free);
+	fprintf(out_file, "\t%s : %llu,\n", MS_REALLOCS, ms.ms_reallocs);
+	fprintf(out_file, "\t%s : %llu,\n", MS_MAX, ms.ms_max);
+	fprintf(out_file, "\t%s : {\n", MS_TSTART);
+	fprintf(out_file, "\t\t%s : %llu,\n", MS_SEC, ms.ms_start.tv_sec);
+	fprintf(out_file, "\t\t%s : %ld,\n", MS_NSEC, ms.ms_start.tv_nsec);
+	fprintf(out_file, "\t},\n");
+	fprintf(out_file, "\t%s : {\n", MS_TFINISH);
+	fprintf(out_file, "\t\t%s : %llu,\n", MS_SEC, ms.ms_finish.tv_sec);
+	fprintf(out_file, "\t\t%s : %ld,\n", MS_NSEC, ms.ms_finish.tv_nsec);
+	fprintf(out_file, "\t}\n");
+	fprintf(out_file, "}");
 
-	f = fopen(fname, "w");
-	if (f == NULL)
-		return;
-
-	fprintf(f, "{\n");
-	fprintf(f, "\t\"annotation\" : \"%s\",\n", mprofile_get_annotation());
-	fprintf(f, "\t%s : %llu,\n", MS_TOTAL_ALLOCATED, ms.ms_total_allocated);
-	fprintf(f, "\t%s : %llu,\n", MS_TOTAL_RELEASED, ms.ms_total_released);
-	fprintf(f, "\t%s : %llu,\n", MS_ALLOCS, ms.ms_allocs);
-	fprintf(f, "\t%s : %llu,\n", MS_RELEASES, ms.ms_free);
-	fprintf(f, "\t%s : %llu,\n", MS_REALLOCS, ms.ms_reallocs);
-	fprintf(f, "\t%s : %llu,\n", MS_MAX, ms.ms_max);
-	fprintf(f, "\t%s : {\n", MS_TSTART);
-	fprintf(f, "\t\t%s : %llu,\n", MS_SEC, ms.ms_start.tv_sec);
-	fprintf(f, "\t\t%s : %ld,\n", MS_NSEC, ms.ms_start.tv_nsec);
-	fprintf(f, "\t},\n");
-	fprintf(f, "\t%s : {\n", MS_TFINISH);
-	fprintf(f, "\t\t%s : %llu,\n", MS_SEC, ms.ms_finish.tv_sec);
-	fprintf(f, "\t\t%s : %ld,\n", MS_NSEC, ms.ms_finish.tv_nsec);
-	fprintf(f, "\t}\n");
-	fprintf(f, "}");
+	fclose(out_file);
 }
 
 static void
@@ -114,8 +107,10 @@ save_profile_trace(void)
 {
 	pthread_key_delete(mp_pthrd_key);
 	/* don't link alloc (free, realloc) ops to chains */
-	mprofile_merge(0);
+	mprofile_save(out_file, 0);
 	mprofile_done();
+
+	fclose(out_file);
 }
 
 static void
@@ -123,8 +118,10 @@ save_profile_trace_link_chains(void)
 {
 	pthread_key_delete(mp_pthrd_key);
 	/* link alloc (free, realloc) ops to chains */
-	mprofile_merge(1);
+	mprofile_save(out_file, 1);
 	mprofile_done();
+
+	fclose(out_file);
 }
 
 static mprofile_t *
@@ -222,10 +219,18 @@ void
 mprofile_start(void)
 {
 	char *mprofile_mode = getenv("MPROFILE_MODE");
-	char default_mode[2] = { '1', 0 };
+	char *fname = getenv("MPROFILE_OUTF");
+	char  default_mode[2] = { '1', 0 };
 
 	if (mprofile_mode == NULL)
 		mprofile_mode = default_mode;
+
+	if (fname == NULL)
+		return;
+
+	out_file = fopen(fname, "w");
+	if (out_file == NULL)
+		return;
 
 	switch (*mprofile_mode) {
 	case '1':
