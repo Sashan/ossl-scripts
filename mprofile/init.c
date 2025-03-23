@@ -91,7 +91,7 @@ save_stats(void)
 		return;
 
 	fprintf(f, "{\n");
-	fprintf(f, "\tannotation : \"%s\",\n", mprofile_get_annotation());
+	fprintf(f, "\t\"annotation\" : \"%s\",\n", mprofile_get_annotation());
 	fprintf(f, "\t%s : %llu,\n", MS_TOTAL_ALLOCATED, ms.ms_total_allocated);
 	fprintf(f, "\t%s : %llu,\n", MS_TOTAL_RELEASED, ms.ms_total_released);
 	fprintf(f, "\t%s : %llu,\n", MS_ALLOCS, ms.ms_allocs);

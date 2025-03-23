@@ -275,7 +275,7 @@ profile_save(mprofile_t *mp)
 	    (long long)start_time_tv.tv_sec);
 	fprintf(f, "\t%s : %lu\n", MPROFILE_TIME_NS, start_time_tv.tv_nsec);
 	fprintf(f, "  },\n");
-	fprintf(f, "\tannotation : \"%s\",\n", mprofile_get_annotation());
+	fprintf(f, "\t\"annotation\" : \"%s\",\n", mprofile_get_annotation());
 	fprintf(f, "  \"allocations\" : [\n");
 	TAILQ_FOREACH(mpr, &mp->mp_tqhead, mpr_tqe) {
 		if (first == 0)
